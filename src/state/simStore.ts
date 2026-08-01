@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { ActiveConversation, Agent, LogEntry, SimClock, World, WorldObject } from '../sim/types';
 import { buildWorld } from '../sim/world';
 import { createNaturalFeatures } from '../sim/naturalFeatures';
+import { agentIdCounter, objectIdCounter } from '../sim/ids';
 import {
   type AgentConfig,
   createAgentFromConfig,
@@ -181,6 +182,7 @@ export const useSimStore = create<SimState>()(
           state.world = fresh.world;
           state.agents = fresh.agents;
           state.agentOrder = fresh.agentOrder;
+          objectIdCounter.reset();
           state.worldObjects = createNaturalFeatures();
           state.activeConversations = {};
           state.log = freshLog();
@@ -223,6 +225,11 @@ export function loadSnapshot(snapshot: {
   clock: SimClock;
   settings: ConnectionSettings;
 }): void {
+  // A loaded save brings its own ids in from outside this session's counters — bump them past
+  // whatever's in the save so a freshly-created object/agent afterward can't collide.
+  objectIdCounter.ensureAbove((snapshot.worldObjects ?? []).map((o) => o.id));
+  agentIdCounter.ensureAbove((snapshot.agentConfigs ?? []).map((c) => c.id));
+
   useSimStore.setState((state) => {
     state.agents = snapshot.agents;
     state.agentOrder = snapshot.agentOrder;

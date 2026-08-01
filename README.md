@@ -118,6 +118,15 @@ Most browsers exempt `localhost`, but if yours doesn't:
   to wander in a direction. Every place it's ever noticed or interacted with
   is remembered this way, so it's possible to deliberately go back to
   something built earlier instead of only rediscovering things by chance.
+  Ids are kept as plain short numbers (`1`, `2`, `3`...) rather than long
+  opaque tokens — smaller local models are far more reliable at copying a
+  short id back correctly than a long one, which matters for both `go_to`
+  and adding onto something that already exists.
+- **No duplicate pile-ups.** If an agent tries to add something to an object
+  that's word-for-word already there, the addition is skipped — it's told
+  what's already there instead, rather than the same line getting logged
+  twice. This doesn't judge or block *new* content, only exact repeats of
+  what's already on that same object.
 - **Full transcript**: every line anyone says, and everything anyone makes,
   is logged live in the transcript panel and shown as an on-canvas speech
   bubble as it happens — nothing is summarized or paraphrased. Simultaneous

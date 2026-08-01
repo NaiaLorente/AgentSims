@@ -16,6 +16,7 @@ import {
   type TranscriptLine,
 } from '../llm/prompts';
 import { chatJSON, type OllamaSettings } from '../llm/ollamaClient';
+import { objectIdCounter } from './ids';
 
 const NEARBY_RADIUS = 6;
 const TALK_TRIGGER_RADIUS = 1;
@@ -25,10 +26,13 @@ const MAX_CONVERSATION_TURNS = 8;
 const MAX_WORLD_OBJECTS = 200;
 const MAX_LOG_ENTRIES = 500;
 
-let objectCounter = 0;
 function makeWorldObjectId(): string {
-  objectCounter += 1;
-  return `obj_${Date.now().toString(36)}_${objectCounter}`;
+  return objectIdCounter.next();
+}
+
+/** Cheap literal-match dedup — not interpreting meaning, just catching exact repeats. */
+function normalizeContent(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 let conversationCounter = 0;
@@ -275,7 +279,20 @@ async function requestPlan(agentId: string): Promise<void> {
       case 'create': {
         if (intent.content) {
           const existing = intent.targetId ? state.worldObjects.find((o) => o.id === intent.targetId) : undefined;
-          if (existing) {
+          const normalized = normalizeContent(intent.content);
+          const alreadyThere =
+            existing &&
+            (normalizeContent(existing.content) === normalized ||
+              existing.additions.some((add) => normalizeContent(add.content) === normalized));
+
+          if (existing && alreadyThere) {
+            addMemory(
+              a,
+              now,
+              'noticed',
+              `"${intent.content}" is already there on "${existing.content}" (id: "${existing.id}") — no need to add it again.`,
+            );
+          } else if (existing) {
             existing.additions.push({ agentLabel: a.label, content: intent.content, tick: now });
             addMemory(a, now, 'made', `You added to "${existing.content}": "${intent.content}" (id: "${existing.id}")`);
             pushLogEntry(state, {

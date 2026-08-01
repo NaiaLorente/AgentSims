@@ -1,11 +1,6 @@
 import type { WorldObject } from './types';
 import { WORLD_HEIGHT, WORLD_WIDTH } from './world';
-
-let counter = 0;
-function makeNaturalId(kind: string): string {
-  counter += 1;
-  return `natural_${kind}_${counter}`;
-}
+import { objectIdCounter } from './ids';
 
 /**
  * A handful of raw, unexplained materials scattered around the map, present
@@ -23,7 +18,7 @@ export function createNaturalFeatures(): WorldObject[] {
   ];
 
   return seeds.map((seed) => ({
-    id: makeNaturalId(seed.content),
+    id: objectIdCounter.next(),
     natural: true,
     creatorId: null,
     creatorLabel: null,

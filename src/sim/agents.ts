@@ -1,5 +1,6 @@
 import type { Agent, World } from './types';
 import { randomTile } from './world';
+import { agentIdCounter } from './ids';
 
 export interface AgentConfig {
   id: string;
@@ -18,11 +19,8 @@ const COLOR_PALETTE = [
   '#ec4899',
 ];
 
-let configCounter = 0;
-
 export function makeAgentConfigId(): string {
-  configCounter += 1;
-  return `agentcfg_${Date.now().toString(36)}_${configCounter}`;
+  return agentIdCounter.next();
 }
 
 /**
