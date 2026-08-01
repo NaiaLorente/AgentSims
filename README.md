@@ -102,6 +102,17 @@ Most browsers exempt `localhost`, but if yours doesn't:
   agents can see nearby and react to, reference, or build on. This is the
   only mechanism for anything resembling construction, writing, or shared
   culture — nothing about what to build is ever suggested.
+- **Building on what's already there.** Instead of always making something
+  new, an agent can add to something already at its location — its own
+  earlier creation, someone else's, or a natural feature (below) — so one
+  thing can accumulate contributions from several agents over time into a
+  single evolving structure, rather than everything being a scatter of
+  disconnected objects.
+- **A few raw materials exist from the start**: water, fire, wood, and stone,
+  each seeded at a fixed spot somewhere on the map. They're never announced
+  — an agent only learns one exists by wandering close enough to notice it,
+  the same way it'd notice another agent or something someone built. Nothing
+  in the prompt says what they're for, or that they're significant at all.
 - **Full transcript**: every line anyone says, and everything anyone makes,
   is logged live in the transcript panel and shown as an on-canvas speech
   bubble as it happens — nothing is summarized or paraphrased.

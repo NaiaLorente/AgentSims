@@ -26,17 +26,32 @@ export type AgentIntent =
   | { kind: 'move'; direction: Direction }
   | { kind: 'talk_to'; targetId: string }
   | { kind: 'say'; message: string }
-  | { kind: 'create'; content: string }
+  | { kind: 'create'; content: string; targetId?: string }
   | { kind: 'wait' };
 
-/** Something an agent left behind — its meaning is whatever the agent said it is; the engine never interprets it. */
+export interface WorldObjectAddition {
+  agentLabel: string;
+  content: string;
+  tick: number;
+}
+
+/**
+ * Something present in the world — either left behind by an agent, or a raw
+ * natural feature seeded at the start (`natural: true`). Its meaning is
+ * whatever whoever interacts with it decides; the engine never interprets
+ * it. Any nearby agent can add to it (via `create` with a `targetId`),
+ * letting one thing accumulate contributions from many agents over time
+ * instead of everything being a disconnected scatter of separate objects.
+ */
 export interface WorldObject {
   id: string;
-  creatorId: string;
-  creatorLabel: string;
+  natural: boolean;
+  creatorId: string | null;
+  creatorLabel: string | null;
   pos: Vec2;
   content: string;
   tick: number;
+  additions: WorldObjectAddition[];
 }
 
 /** What an agent should do once a `walking` path finishes. */

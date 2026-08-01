@@ -107,22 +107,35 @@ function drawAgent(
   }
 }
 
+const NATURAL_COLORS: Record<string, string> = {
+  water: '#38bdf8',
+  fire: '#f97316',
+  wood: '#a16207',
+  stone: '#9ca3af',
+};
+
+function objectColor(obj: WorldObject): string {
+  return obj.natural ? (NATURAL_COLORS[obj.content] ?? '#94a3b8') : '#34d399';
+}
+
 function drawObject(ctx: CanvasRenderingContext2D, obj: WorldObject) {
   const cx = obj.pos.x * TILE + TILE / 2;
   const cy = obj.pos.y * TILE + TILE / 2;
-  const s = TILE * 0.22;
+  const s = obj.natural ? TILE * 0.3 : TILE * 0.22;
 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(Math.PI / 4);
-  ctx.fillStyle = '#34d399';
+  ctx.fillStyle = objectColor(obj);
   ctx.fillRect(-s / 2, -s / 2, s, s);
   ctx.strokeStyle = 'rgba(0,0,0,0.5)';
   ctx.lineWidth = 1;
   ctx.strokeRect(-s / 2, -s / 2, s, s);
   ctx.restore();
 
-  const caption = obj.content.length > 26 ? `${obj.content.slice(0, 26)}…` : obj.content;
+  const suffix = obj.additions.length > 0 ? ` (+${obj.additions.length})` : '';
+  const base = obj.content.length > 22 ? `${obj.content.slice(0, 22)}…` : obj.content;
+  const caption = `${base}${suffix}`;
   ctx.font = '10px system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

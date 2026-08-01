@@ -173,7 +173,8 @@ async function requestPlan(agentId: string): Promise<void> {
     fallbackPlannerResponse(),
   );
   const validTargets = new Set(nearby.map((o) => o.id));
-  const intent = parseIntent(resp, validTargets);
+  const validObjects = new Set(nearbyObjects.map((o) => o.id));
+  const intent = parseIntent(resp, validTargets, validObjects);
 
   useSimStore.getState().mutate((state) => {
     const a = state.agents[agentId];
@@ -230,25 +231,42 @@ async function requestPlan(agentId: string): Promise<void> {
       }
       case 'create': {
         if (intent.content) {
-          const obj: WorldObject = {
-            id: makeWorldObjectId(),
-            creatorId: a.id,
-            creatorLabel: a.label,
-            pos: { ...a.pos },
-            content: intent.content,
-            tick: now,
-          };
-          state.worldObjects.push(obj);
-          if (state.worldObjects.length > MAX_WORLD_OBJECTS) {
-            state.worldObjects.splice(0, state.worldObjects.length - MAX_WORLD_OBJECTS);
+          const existing = intent.targetId ? state.worldObjects.find((o) => o.id === intent.targetId) : undefined;
+          if (existing) {
+            existing.additions.push({ agentLabel: a.label, content: intent.content, tick: now });
+            addMemory(a, now, 'made', `You added to "${existing.content}": "${intent.content}"`);
+            state.log.push({
+              id: makeLogId(),
+              tick: now,
+              text: `${a.label} added to "${existing.content}": "${intent.content}"`,
+              kind: 'creation',
+            });
+          } else {
+            const obj: WorldObject = {
+              id: makeWorldObjectId(),
+              natural: false,
+              creatorId: a.id,
+              creatorLabel: a.label,
+              pos: { ...a.pos },
+              content: intent.content,
+              tick: now,
+              additions: [],
+            };
+            state.worldObjects.push(obj);
+            const agentMade = state.worldObjects.filter((o) => !o.natural);
+            if (agentMade.length > MAX_WORLD_OBJECTS) {
+              const overflow = agentMade.length - MAX_WORLD_OBJECTS;
+              const toRemove = new Set(agentMade.slice(0, overflow).map((o) => o.id));
+              state.worldObjects = state.worldObjects.filter((o) => !toRemove.has(o.id));
+            }
+            addMemory(a, now, 'made', `You left: "${intent.content}"`);
+            state.log.push({
+              id: makeLogId(),
+              tick: now,
+              text: `${a.label} made: "${intent.content}"`,
+              kind: 'creation',
+            });
           }
-          addMemory(a, now, 'made', `You left: "${intent.content}"`);
-          state.log.push({
-            id: makeLogId(),
-            tick: now,
-            text: `${a.label} made: "${intent.content}"`,
-            kind: 'creation',
-          });
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;

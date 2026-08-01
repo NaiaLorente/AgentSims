@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Agent, LogEntry, SimClock, World, WorldObject } from '../sim/types';
 import { buildWorld } from '../sim/world';
+import { createNaturalFeatures } from '../sim/naturalFeatures';
 import {
   type AgentConfig,
   createAgentFromConfig,
@@ -85,7 +86,7 @@ export const useSimStore = create<SimState>()(
       agents,
       agentOrder,
       agentConfigs: initialConfigs,
-      worldObjects: [],
+      worldObjects: createNaturalFeatures(),
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
       settings: DEFAULT_CONNECTION_SETTINGS,
@@ -177,7 +178,7 @@ export const useSimStore = create<SimState>()(
           state.world = fresh.world;
           state.agents = fresh.agents;
           state.agentOrder = fresh.agentOrder;
-          state.worldObjects = [];
+          state.worldObjects = createNaturalFeatures();
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;

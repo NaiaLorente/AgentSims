@@ -35,6 +35,13 @@ export function fallbackPlannerResponse(): PlannerResponse {
   return { action: 'wait' };
 }
 
+function describeObject(o: WorldObject): string {
+  const origin = o.natural ? o.content : `${o.creatorLabel} left this: "${o.content}"`;
+  const additions = o.additions.map((a) => `${a.agentLabel} added: "${a.content}"`);
+  const parts = [origin, ...additions];
+  return `- ${parts.join(' — ')} (id: "${o.id}")`;
+}
+
 export function buildPlannerPrompt(
   agent: Agent,
   nearbyAgents: Agent[],
@@ -46,11 +53,11 @@ You can:
 - move (north, south, east, west, or let it be random)
 - talk to someone nearby, if you want to
 - say something out loud, to no one in particular
-- make something — leave anything at all where you're standing: an object, a message, a structure, a piece of writing, anything, described however you want
+- make something — leave anything at all where you're standing: an object, a message, a structure, a piece of writing, anything, described however you want. If something is already there (see below), you can add to it instead of starting something new
 - do nothing
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "talk_to" | "say" | "create" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "talk_to" — the id of someone listed below, "message": only if action is "say", "content": only if action is "create" — whatever you're making, "thought": optional, something private no one else sees}`;
+{"action": "move" | "talk_to" | "say" | "create" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "talk_to" (id of someone listed below) or if action is "create" and you're adding onto something that's already there (its id, from the list below), "message": only if action is "say", "content": only if action is "create" — whatever you're making or adding, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -58,9 +65,7 @@ Respond ONLY with JSON of this shape:
       : nearbyAgents.map((other) => `- ${other.label} (id: "${other.id}")`).join('\n');
 
   const objectsBlock =
-    nearbyObjects.length === 0
-      ? ''
-      : `\n\nNearby:\n${nearbyObjects.map((o) => `- ${o.creatorLabel} left this: "${o.content}" (id: "${o.id}")`).join('\n')}`;
+    nearbyObjects.length === 0 ? '' : `\n\nNearby:\n${nearbyObjects.map(describeObject).join('\n')}`;
 
   const user = `People nearby:
 ${nearbyDesc}${objectsBlock}
@@ -73,7 +78,11 @@ What do you do?`;
   return { system, user };
 }
 
-export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>): AgentIntent {
+export function parseIntent(
+  resp: PlannerResponse,
+  validTargetIds: Set<string>,
+  validObjectIds: Set<string>,
+): AgentIntent {
   switch (resp.action) {
     case 'move': {
       const dir = resp.direction;
@@ -89,8 +98,10 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>):
       return { kind: 'wait' };
     case 'say':
       return { kind: 'say', message: (resp.message ?? '').trim().slice(0, 300) };
-    case 'create':
-      return { kind: 'create', content: (resp.content ?? '').trim().slice(0, 300) };
+    case 'create': {
+      const targetId = resp.targetId && validObjectIds.has(resp.targetId) ? resp.targetId : undefined;
+      return { kind: 'create', content: (resp.content ?? '').trim().slice(0, 300), targetId };
+    }
     default:
       return { kind: 'wait' };
   }
