@@ -385,6 +385,11 @@ async function runConversation(aId: string, bId: string): Promise<void> {
   let speakerId = aId;
   let listenerId = bId;
   const transcript: TranscriptLine[] = [];
+  // Tracks each participant's own consecutive silent turns — a model that keeps returning an
+  // empty message isn't "choosing" much of anything, and without this the other side just
+  // keeps monologuing at it for the full turn cap. This ends things once someone's clearly not
+  // engaging, without ever touching what either side actually says.
+  const silenceStreak: Record<string, number> = {};
 
   for (let turn = 0; turn < MAX_CONVERSATION_TURNS; turn++) {
     const state0 = useSimStore.getState();
@@ -402,6 +407,7 @@ async function runConversation(aId: string, bId: string): Promise<void> {
     );
 
     const message = (resp.message ?? '').trim();
+    silenceStreak[speakerId] = message ? 0 : (silenceStreak[speakerId] ?? 0) + 1;
     if (message) {
       transcript.push({ speakerLabel: speaker.label, text: message });
       useSimStore.getState().mutate((state) => {
@@ -430,6 +436,7 @@ async function runConversation(aId: string, bId: string): Promise<void> {
     }
 
     if (resp.end) break;
+    if (silenceStreak[speakerId] >= 2) break;
     [speakerId, listenerId] = [listenerId, speakerId];
   }
 

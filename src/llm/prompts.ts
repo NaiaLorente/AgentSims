@@ -189,9 +189,10 @@ export function buildConversationTurnPrompt(
   listener: Agent,
   transcript: TranscriptLine[],
 ): { system: string; user: string } {
-  const system = `You are ${speaker.label}. You're currently with ${listener.label}.
+  const system = `You are ${speaker.label}. You're currently with ${listener.label} — say something back to them. Only leave "message" empty if you genuinely have nothing to add.
 
-Respond ONLY with JSON: {"message": what you say next (leave it empty if you'd rather not say anything right now), "end": true if you want to end this, otherwise false, "relationshipLabel": optional — a short phrase in your own words for how you'd describe ${listener.label} to yourself right now (e.g. "a new friend", "annoying", "someone I trust"), only include this if it's changed, "affinityDelta": optional — a small number from -10 to 10 for how this exchange changed how you feel about ${listener.label} (positive if better, negative if worse), only include this if something changed}`;
+Respond ONLY with JSON of this shape:
+{"message": what you say next, "end": true if you want to end this, otherwise false, "relationshipLabel": optional, a short phrase in your own words for how you'd describe ${listener.label} to yourself right now (e.g. "a new friend", "annoying", "someone I trust") — only include this if it's changed, "affinityDelta": optional, a small number from -10 to 10 for how this exchange changed how you feel about ${listener.label} — only include this if something changed}`;
 
   const existing = speaker.relationships[listener.id];
   const relationshipBlock = existing
