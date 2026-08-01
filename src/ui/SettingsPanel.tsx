@@ -174,6 +174,18 @@ function NvidiaSection() {
         </datalist>
       </label>
 
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-white/60">
+          Proxy URL <span className="text-white/40">(needed — see below)</span>
+        </span>
+        <input
+          value={nvidia.proxyUrl}
+          onChange={(e) => setNvidiaConfig({ proxyUrl: e.target.value })}
+          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs"
+          placeholder="https://your-worker.your-name.workers.dev"
+        />
+      </label>
+
       <button
         onClick={() => void checkConnection()}
         className="rounded-md bg-indigo-600 px-2 py-1 text-xs hover:bg-indigo-500 self-start"
@@ -196,10 +208,12 @@ function NvidiaSection() {
         <a href="https://build.nvidia.com" target="_blank" rel="noreferrer" className="underline">
           build.nvidia.com
         </a>{' '}
-        (no local GPU needed). The key is stored only in this browser and sent only to NVIDIA's API — never to us.
-        Free-tier models can be rate-limited, and some browsers may block the direct request (CORS); if Test keeps
-        failing, try the local Ollama mode instead. Prefer smaller instruct models over big "reasoning" ones here —
-        they respond faster for this turn-based sim.
+        (no local GPU needed). <strong>NVIDIA's API blocks direct browser requests</strong>, so you'll need a free
+        CORS relay: deploy{' '}
+        <code className="rounded bg-black/40 px-1">proxy/nvidia-cors-proxy.js</code> from the repo to a Cloudflare
+        Worker (free, ~2 minutes, see the README) and paste its URL above. Your API key is only ever sent to that
+        worker and to NVIDIA — never to us. Prefer smaller instruct models over big "reasoning" ones here — they
+        respond faster for this turn-based sim.
       </div>
     </>
   );

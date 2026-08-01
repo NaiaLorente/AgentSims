@@ -35,13 +35,19 @@ if your computer can't comfortably run a local model. NVIDIA's
 free-tier hosted models (Llama, Qwen, DeepSeek, Nemotron, and more).
 
 1. Grab a free API key at [build.nvidia.com](https://build.nvidia.com) (sign
-   in, open any model page, click **Get API Key**).
-2. In the app's **AI settings** panel, switch to **Cloud (NVIDIA key)**,
-   paste the key, and pick a model (a small instruct model like
-   `meta/llama-3.1-8b-instruct` responds fastest for this turn-based sim —
-   the big "reasoning" models work but are noticeably slower per turn).
-3. Click **Test**. The key is stored only in your browser's local storage and
-   is sent only to NVIDIA's API — never to us or anywhere else.
+   in, open any model page, click **Get API Key** — not "Download", which is
+   for self-hosting and needs your own GPU anyway).
+2. **Deploy the free CORS proxy** (required — NVIDIA's API blocks direct
+   browser requests): see [Proxy setup](#proxy-setup-for-cloud-mode) below.
+   Takes about 2 minutes, no coding.
+3. In the app's **AI settings** panel, switch to **Cloud (NVIDIA key)**,
+   paste your API key, your proxy's URL, and pick a model (a small instruct
+   model like `meta/llama-3.1-8b-instruct` responds fastest for this
+   turn-based sim — the big "reasoning" models work but are noticeably
+   slower per turn).
+4. Click **Test**. The key is stored only in your browser's local storage and
+   is sent only to your proxy and to NVIDIA's API — never to us or anywhere
+   else.
 
 **Then, either way:**
 
@@ -59,15 +65,34 @@ beyond NVIDIA's free tier limits if you choose cloud mode.
 ## Which mode should I use?
 
 - **Local (Ollama)** if you have a decent GPU (or are willing to wait on
-  CPU): fully private, no rate limits, no account.
+  CPU): fully private, no rate limits, no account, no proxy needed.
 - **Cloud (NVIDIA key)** if your machine can't run a local model well: no
-  hardware requirements, but free-tier usage is rate-limited by NVIDIA, and
-  ⚠️ **direct browser calls to NVIDIA's API haven't been verified to work
-  past CORS restrictions** — if **Test** keeps failing with a network error
-  after you've confirmed the key and model are correct, that's likely why,
-  and local Ollama mode is the reliable fallback. (If you hit this, a small
-  free serverless proxy — e.g. a Cloudflare Worker — could relay the request
-  and fix it; open an issue/ask if you want that added.)
+  hardware requirements, but requires deploying the small free proxy below
+  (NVIDIA's API blocks direct browser requests), and free-tier usage is
+  rate-limited by NVIDIA.
+
+## Proxy setup (for cloud mode)
+
+NVIDIA's API doesn't send the CORS headers browsers require, so a page
+can't call it directly (you'll see `Could not reach NVIDIA's API... Failed
+to fetch` in the Test result). The fix is `proxy/nvidia-cors-proxy.js` — a
+tiny, stateless relay you deploy to your own free Cloudflare account. It
+just forwards your request (and your API key, unmodified) to NVIDIA and
+adds the missing header; it never stores or sees anything beyond that one
+request.
+
+1. Go to [dash.cloudflare.com](https://dash.cloudflare.com) and sign up (or
+   log in) — the free plan covers this easily.
+2. **Workers & Pages → Create → Create Worker.**
+3. Replace the default starter code with the full contents of
+   [`proxy/nvidia-cors-proxy.js`](proxy/nvidia-cors-proxy.js), then **Deploy**.
+4. Copy the worker's URL (something like
+   `https://nvidia-cors-proxy.<your-subdomain>.workers.dev`).
+5. Paste it into AgentSims' **Cloud (NVIDIA key)** settings under **Proxy
+   URL**.
+
+You only need to do this once; the same worker keeps working for future
+sessions.
 
 ## Deploying (GitHub Pages)
 
@@ -84,9 +109,9 @@ Pages) calling `http://localhost:11434` can be blocked by the browser as
   entirely, or
 - allow insecure content for the Pages site in your browser's site settings.
 
-For **cloud mode**, see the CORS caveat above — it should work the same
-whether hosted or run locally, but hasn't been confirmed against NVIDIA's
-actual API.
+**Cloud mode** works the same whether hosted or run locally, as long as
+you've deployed the proxy (see above) — the browser calls your Worker over
+https either way, so there's no mixed-content issue there.
 
 ## How it works
 

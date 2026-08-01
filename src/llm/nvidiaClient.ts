@@ -1,8 +1,14 @@
 import type { NvidiaConfig } from './settings';
 
-const NVIDIA_CHAT_URL = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const NVIDIA_API_BASE = 'https://integrate.api.nvidia.com';
+const CHAT_COMPLETIONS_PATH = '/v1/chat/completions';
 
 export class NvidiaError extends Error {}
+
+function chatUrl(config: NvidiaConfig): string {
+  const base = config.proxyUrl.trim().replace(/\/+$/, '') || NVIDIA_API_BASE;
+  return base + CHAT_COMPLETIONS_PATH;
+}
 
 /**
  * A curated shortlist of build.nvidia.com's free-tier chat/instruct models
@@ -34,7 +40,7 @@ async function callChatCompletions(
   opts: ChatOptions,
   useJsonMode: boolean,
 ): Promise<Response> {
-  return fetch(NVIDIA_CHAT_URL, {
+  return fetch(chatUrl(config), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -72,10 +78,11 @@ export async function nvidiaChat(config: NvidiaConfig, temperature: number, opts
       res = await callChatCompletions(config, temperature, opts, false);
     }
   } catch (err) {
-    throw new NvidiaError(
-      `Could not reach NVIDIA's API from the browser: ${String(err)}. This can happen if the browser blocks the ` +
-        `request (CORS) or you're offline — try the local Ollama mode if this keeps failing.`,
-    );
+    const hint = config.proxyUrl.trim()
+      ? `Double-check the Proxy URL is correct and the worker is deployed.`
+      : `NVIDIA's API blocks direct browser requests (CORS) for most people — set a Proxy URL in settings ` +
+        `(see proxy/nvidia-cors-proxy.js in the repo for a free 2-minute fix), or use the local Ollama mode instead.`;
+    throw new NvidiaError(`Could not reach NVIDIA's API from the browser: ${String(err)}. ${hint}`);
   }
 
   if (!res.ok) {

@@ -8,6 +8,12 @@ export interface OllamaConfig {
 export interface NvidiaConfig {
   apiKey: string;
   model: string;
+  /**
+   * Optional base URL of a user-deployed CORS relay (see proxy/nvidia-cors-proxy.js).
+   * Direct browser calls to NVIDIA's API are blocked by CORS, so most people will need this.
+   * When empty, calls go straight to NVIDIA's API (and will likely fail with a fetch error).
+   */
+  proxyUrl: string;
 }
 
 export interface LLMSettings {
@@ -27,6 +33,7 @@ export const DEFAULT_LLM_SETTINGS: LLMSettings = {
   nvidia: {
     apiKey: '',
     model: 'meta/llama-3.1-8b-instruct',
+    proxyUrl: '',
   },
 };
 
