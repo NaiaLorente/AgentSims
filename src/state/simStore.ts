@@ -3,14 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { Agent, LogEntry, SimClock, World } from '../sim/types';
 import { buildWorld } from '../sim/world';
 import { createInitialAgents } from '../sim/agents';
-import {
-  type Backend,
-  type LLMSettings,
-  type NvidiaConfig,
-  type OllamaConfig,
-  loadPersistedSettings,
-  persistSettings,
-} from '../llm/settings';
+import { DEFAULT_SETTINGS, type OllamaSettings } from '../llm/ollamaClient';
 
 let logCounter = 0;
 export function makeLogId(): string {
@@ -26,16 +19,13 @@ export interface SimState {
   agentOrder: string[];
   log: LogEntry[];
   clock: SimClock;
-  settings: LLMSettings;
+  settings: OllamaSettings;
   connectionStatus: ConnectionStatus;
   connectionError: string | null;
   availableModels: string[];
   selectedAgentId: string | null;
 
-  setBackend: (backend: Backend) => void;
-  setTemperature: (temperature: number) => void;
-  setOllamaConfig: (partial: Partial<OllamaConfig>) => void;
-  setNvidiaConfig: (partial: Partial<NvidiaConfig>) => void;
+  setSettings: (partial: Partial<OllamaSettings>) => void;
   setAvailableModels: (models: string[]) => void;
   setConnectionStatus: (status: ConnectionStatus, error?: string | null) => void;
   selectAgent: (id: string | null) => void;
@@ -57,10 +47,8 @@ function freshWorldAndAgents(): { world: World; agents: Record<string, Agent>; a
 }
 
 export const useSimStore = create<SimState>()(
-  immer((set, get) => {
+  immer((set) => {
     const { world, agents, agentOrder } = freshWorldAndAgents();
-
-    const persistCurrentSettings = () => persistSettings(get().settings);
 
     return {
       world,
@@ -75,42 +63,16 @@ export const useSimStore = create<SimState>()(
         },
       ],
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
-      settings: loadPersistedSettings(),
+      settings: DEFAULT_SETTINGS,
       connectionStatus: 'unknown',
       connectionError: null,
       availableModels: [],
       selectedAgentId: null,
 
-      setBackend: (backend) => {
+      setSettings: (partial) =>
         set((state) => {
-          state.settings.backend = backend;
-          state.connectionStatus = 'unknown';
-          state.connectionError = null;
-          state.availableModels = [];
-        });
-        persistCurrentSettings();
-      },
-
-      setTemperature: (temperature) => {
-        set((state) => {
-          state.settings.temperature = temperature;
-        });
-        persistCurrentSettings();
-      },
-
-      setOllamaConfig: (partial) => {
-        set((state) => {
-          Object.assign(state.settings.ollama, partial);
-        });
-        persistCurrentSettings();
-      },
-
-      setNvidiaConfig: (partial) => {
-        set((state) => {
-          Object.assign(state.settings.nvidia, partial);
-        });
-        persistCurrentSettings();
-      },
+          Object.assign(state.settings, partial);
+        }),
 
       setAvailableModels: (models) =>
         set((state) => {
@@ -170,7 +132,7 @@ export function serializeSnapshot(): {
   agentOrder: string[];
   log: LogEntry[];
   clock: SimClock;
-  settings: LLMSettings;
+  settings: OllamaSettings;
 } {
   const s = useSimStore.getState();
   return {
@@ -187,7 +149,7 @@ export function loadSnapshot(snapshot: {
   agentOrder: string[];
   log: LogEntry[];
   clock: SimClock;
-  settings: LLMSettings;
+  settings: OllamaSettings;
 }): void {
   useSimStore.setState((state) => {
     state.agents = snapshot.agents;

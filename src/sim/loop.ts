@@ -15,7 +15,7 @@ import {
   PLANNER_SCHEMA,
   type PlannerResponse,
 } from '../llm/prompts';
-import { chatJSON } from '../llm/client';
+import { chatJSON } from '../llm/ollamaClient';
 import { applyInteraction, NOTABLE_STAGES } from './relationships';
 import { spawnChild } from './agents';
 
