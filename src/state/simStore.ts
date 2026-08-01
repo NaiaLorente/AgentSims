@@ -2,7 +2,13 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Agent, LogEntry, SimClock, World } from '../sim/types';
 import { buildWorld } from '../sim/world';
-import { type AgentConfig, createAgentsFromConfigs, defaultAgentConfigs, makeAgentConfigId } from '../sim/agents';
+import {
+  type AgentConfig,
+  createAgentFromConfig,
+  createAgentsFromConfigs,
+  defaultAgentConfigs,
+  makeAgentConfigId,
+} from '../sim/agents';
 
 let logCounter = 0;
 export function makeLogId(): string {
@@ -92,22 +98,37 @@ export const useSimStore = create<SimState>()(
 
       addAgentConfig: () =>
         set((state) => {
-          state.agentConfigs.push({
+          const config: AgentConfig = {
             id: makeAgentConfigId(),
             label: `Agent ${state.agentConfigs.length + 1}`,
             model: '',
-          });
+          };
+          state.agentConfigs.push(config);
+          // Spawn it live immediately — no Reset needed to see a newly added agent.
+          const agent = createAgentFromConfig(config, state.world, state.agentConfigs.length - 1);
+          state.agents[agent.id] = agent;
+          state.agentOrder.push(agent.id);
         }),
 
       removeAgentConfig: (id) =>
         set((state) => {
           state.agentConfigs = state.agentConfigs.filter((c) => c.id !== id);
+          delete state.agents[id];
+          state.agentOrder = state.agentOrder.filter((agentId) => agentId !== id);
+          if (state.selectedAgentId === id) state.selectedAgentId = null;
         }),
 
       updateAgentConfig: (id, partial) =>
         set((state) => {
           const cfg = state.agentConfigs.find((c) => c.id === id);
           if (cfg) Object.assign(cfg, partial);
+          // Apply label/model edits to the already-running agent immediately too —
+          // otherwise picking a model here silently does nothing until Reset.
+          const agent = state.agents[id];
+          if (agent) {
+            if (partial.label !== undefined) agent.label = partial.label.trim() || agent.label;
+            if (partial.model !== undefined) agent.model = partial.model;
+          }
         }),
 
       setAvailableModels: (models) =>

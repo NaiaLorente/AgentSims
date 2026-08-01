@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSimStore } from '../state/simStore';
 import { listModels, testConnection } from '../llm/ollamaClient';
-import { colorForIndex } from '../sim/agents';
+import { colorForId } from '../sim/agents';
 
 export function SettingsPanel() {
   const settings = useSimStore((s) => s.settings);
@@ -120,7 +120,7 @@ export function SettingsPanel() {
           <div key={cfg.id} className="flex items-center gap-1.5">
             <span
               className="h-3 w-3 shrink-0 rounded-full"
-              style={{ backgroundColor: colorForIndex(index) }}
+              style={{ backgroundColor: colorForId(cfg.id) }}
               aria-hidden
             />
             <input
@@ -155,8 +155,8 @@ export function SettingsPanel() {
       </div>
 
       <p className="text-[11px] text-white/40">
-        Assign a different model to each agent to compare how they behave. Roster changes take effect next time you
-        hit <strong>Reset</strong>.
+        Assign a different model to each agent to compare how they behave. Changes apply immediately — use{' '}
+        <strong>Reset</strong> only if you want to fully restart (clear positions, memory, and the transcript).
       </p>
     </div>
   );

@@ -33,21 +33,31 @@ export function defaultAgentConfigs(): AgentConfig[] {
   ];
 }
 
-export function colorForIndex(index: number): string {
-  return COLOR_PALETTE[index % COLOR_PALETTE.length];
+/** Stable per-id color so an agent doesn't change color when others are added/removed. */
+export function colorForId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return COLOR_PALETTE[hash % COLOR_PALETTE.length];
 }
 
-/** Builds the live, running agents for a simulation from the configured roster. No personas, no needs. */
-export function createAgentsFromConfigs(configs: AgentConfig[], world: World): Agent[] {
-  return configs.map((config, index) => ({
+/** Builds one live, running agent from a config. No persona, no needs. */
+export function createAgentFromConfig(config: AgentConfig, world: World, index: number): Agent {
+  return {
     id: config.id,
     label: config.label.trim() || `Agent ${index + 1}`,
     model: config.model,
-    color: colorForIndex(index),
+    color: colorForId(config.id),
     pos: randomTile(world),
     path: [],
     activity: { kind: 'idle', cooldownUntilTick: 0 },
     memory: [],
     speech: null,
-  }));
+  };
+}
+
+/** Builds the live, running agents for a simulation from the configured roster. */
+export function createAgentsFromConfigs(configs: AgentConfig[], world: World): Agent[] {
+  return configs.map((config, index) => createAgentFromConfig(config, world, index));
 }
