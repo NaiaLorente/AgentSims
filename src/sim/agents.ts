@@ -25,12 +25,18 @@ export function makeAgentConfigId(): string {
   return `agentcfg_${Date.now().toString(36)}_${configCounter}`;
 }
 
+/**
+ * "Agent" reads as spy/secret-agent fiction to a language model — a
+ * surprisingly strong prior in training data — which can bias conversations
+ * toward "mission" tropes independent of anything actually said. Default
+ * labels are deliberately just letters instead. Fully renameable either way.
+ */
+export function defaultLabelForIndex(index: number): string {
+  return String.fromCharCode(65 + (index % 26));
+}
+
 export function defaultAgentConfigs(): AgentConfig[] {
-  return [
-    { id: makeAgentConfigId(), label: 'Agent 1', model: '' },
-    { id: makeAgentConfigId(), label: 'Agent 2', model: '' },
-    { id: makeAgentConfigId(), label: 'Agent 3', model: '' },
-  ];
+  return [0, 1, 2].map((i) => ({ id: makeAgentConfigId(), label: defaultLabelForIndex(i), model: '' }));
 }
 
 /** Stable per-id color so an agent doesn't change color when others are added/removed. */
@@ -46,7 +52,7 @@ export function colorForId(id: string): string {
 export function createAgentFromConfig(config: AgentConfig, world: World, index: number): Agent {
   return {
     id: config.id,
-    label: config.label.trim() || `Agent ${index + 1}`,
+    label: config.label.trim() || defaultLabelForIndex(index),
     model: config.model,
     color: colorForId(config.id),
     pos: randomTile(world),

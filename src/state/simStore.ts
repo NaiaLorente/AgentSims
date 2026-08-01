@@ -7,6 +7,7 @@ import {
   createAgentFromConfig,
   createAgentsFromConfigs,
   defaultAgentConfigs,
+  defaultLabelForIndex,
   makeAgentConfigId,
 } from '../sim/agents';
 
@@ -102,7 +103,7 @@ export const useSimStore = create<SimState>()(
         set((state) => {
           const config: AgentConfig = {
             id: makeAgentConfigId(),
-            label: `Agent ${state.agentConfigs.length + 1}`,
+            label: defaultLabelForIndex(state.agentConfigs.length),
             model: '',
           };
           state.agentConfigs.push(config);

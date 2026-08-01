@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSimStore } from '../state/simStore';
 import { listModels, testConnection } from '../llm/ollamaClient';
-import { colorForId } from '../sim/agents';
+import { colorForId, defaultLabelForIndex } from '../sim/agents';
 
 export function SettingsPanel() {
   const settings = useSimStore((s) => s.settings);
@@ -127,7 +127,7 @@ export function SettingsPanel() {
               value={cfg.label}
               onChange={(e) => updateAgentConfig(cfg.id, { label: e.target.value })}
               className="w-20 min-w-0 rounded-md border border-white/10 bg-black/30 px-1.5 py-1 text-xs"
-              placeholder={`Agent ${index + 1}`}
+              placeholder={defaultLabelForIndex(index)}
             />
             <select
               value={cfg.model}
