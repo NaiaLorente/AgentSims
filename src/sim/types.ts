@@ -72,6 +72,8 @@ export interface LogEntry {
   text: string;
   kind: 'conversation' | 'creation' | 'system';
   speakerLabel?: string;
+  /** Who this was said to, if anyone in particular (omitted for broadcast "say"). */
+  listenerLabel?: string;
 }
 
 export interface SimClock {

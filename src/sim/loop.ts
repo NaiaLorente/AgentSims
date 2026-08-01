@@ -94,7 +94,7 @@ async function runTick(): Promise<void> {
         if (a) a.activity = { kind: 'thinking' };
       }
     });
-    for (const id of toPlan) void requestPlan(id, tick);
+    for (const id of toPlan) void requestPlan(id);
   }
 
   for (const { aId, bId } of pendingConversations) {
@@ -156,7 +156,7 @@ function destinationForDirection(world: SimState['world'], from: Vec2, direction
   };
 }
 
-async function requestPlan(agentId: string, tickAtRequest: number): Promise<void> {
+async function requestPlan(agentId: string): Promise<void> {
   const state0 = useSimStore.getState();
   const agent = state0.agents[agentId];
   if (!agent) return;
@@ -178,14 +178,18 @@ async function requestPlan(agentId: string, tickAtRequest: number): Promise<void
   useSimStore.getState().mutate((state) => {
     const a = state.agents[agentId];
     if (!a || a.activity.kind !== 'thinking') return; // stale: reset or re-planned meanwhile
-    if (resp.thought) addMemory(a, tickAtRequest, 'thought', resp.thought);
+    // Read the tick fresh, now that the response has actually arrived — requests can take
+    // much longer than a single tick, and other agents' calls resolve concurrently, so the
+    // tick this was *sent* on would tag entries out of order relative to faster/slower peers.
+    const now = state.clock.tick;
+    if (resp.thought) addMemory(a, now, 'thought', resp.thought);
 
     switch (intent.kind) {
       case 'move': {
         const dest = destinationForDirection(state.world, a.pos, intent.direction);
         const path = findPath(state.world, a.pos, dest);
         if (path.length === 0) {
-          a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
+          a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         } else {
           a.path = path;
           a.activity = { kind: 'walking', then: { kind: 'wander' } };
@@ -195,7 +199,7 @@ async function requestPlan(agentId: string, tickAtRequest: number): Promise<void
       case 'talk_to': {
         const target = state.agents[intent.targetId];
         if (!target) {
-          a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
+          a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
           break;
         }
         a.path = findPath(state.world, a.pos, target.pos);
@@ -204,11 +208,11 @@ async function requestPlan(agentId: string, tickAtRequest: number): Promise<void
       }
       case 'say': {
         if (intent.message) {
-          a.speech = { text: intent.message.slice(0, 200), expiresAtTick: tickAtRequest + 4 };
-          addMemory(a, tickAtRequest, 'said', `You said: "${intent.message}"`);
+          a.speech = { text: intent.message.slice(0, 200), expiresAtTick: now + 4 };
+          addMemory(a, now, 'said', `You said: "${intent.message}"`);
           state.log.push({
             id: makeLogId(),
-            tick: tickAtRequest,
+            tick: now,
             text: intent.message,
             kind: 'conversation',
             speakerLabel: a.label,
@@ -217,11 +221,11 @@ async function requestPlan(agentId: string, tickAtRequest: number): Promise<void
             if (otherId === agentId) continue;
             const other = state.agents[otherId];
             if (other && chebyshev(other.pos, a.pos) <= NEARBY_RADIUS) {
-              addMemory(other, tickAtRequest, 'heard', `${a.label} said: "${intent.message}"`);
+              addMemory(other, now, 'heard', `${a.label} said: "${intent.message}"`);
             }
           }
         }
-        a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
       }
       case 'create': {
@@ -232,25 +236,25 @@ async function requestPlan(agentId: string, tickAtRequest: number): Promise<void
             creatorLabel: a.label,
             pos: { ...a.pos },
             content: intent.content,
-            tick: tickAtRequest,
+            tick: now,
           };
           state.worldObjects.push(obj);
           if (state.worldObjects.length > MAX_WORLD_OBJECTS) {
             state.worldObjects.splice(0, state.worldObjects.length - MAX_WORLD_OBJECTS);
           }
-          addMemory(a, tickAtRequest, 'made', `You left: "${intent.content}"`);
+          addMemory(a, now, 'made', `You left: "${intent.content}"`);
           state.log.push({
             id: makeLogId(),
-            tick: tickAtRequest,
+            tick: now,
             text: `${a.label} made: "${intent.content}"`,
             kind: 'creation',
           });
         }
-        a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
       }
       case 'wait':
-        a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
     }
   });
@@ -288,7 +292,14 @@ async function runConversation(aId: string, bId: string): Promise<void> {
           addMemory(sp, now, 'said', `You said to ${listener.label}: "${message}"`);
         }
         if (li) addMemory(li, now, 'heard', `${speaker.label} said to you: "${message}"`);
-        state.log.push({ id: makeLogId(), tick: now, text: message, kind: 'conversation', speakerLabel: speaker.label });
+        state.log.push({
+          id: makeLogId(),
+          tick: now,
+          text: message,
+          kind: 'conversation',
+          speakerLabel: speaker.label,
+          listenerLabel: listener.label,
+        });
       });
     }
 

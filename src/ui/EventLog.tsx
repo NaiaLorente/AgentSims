@@ -20,7 +20,10 @@ export function EventLog() {
             <span className="mr-1.5 text-white/30">#{entry.tick}</span>
             {entry.kind === 'conversation' && (
               <>
-                <span className="font-semibold text-sky-300">{entry.speakerLabel ?? 'Agent'}:</span>{' '}
+                <span className="font-semibold text-sky-300">
+                  {entry.speakerLabel ?? 'Agent'}
+                  {entry.listenerLabel && <span className="font-normal text-sky-300/60"> → {entry.listenerLabel}</span>}:
+                </span>{' '}
                 <span className="text-white/80">{entry.text}</span>
               </>
             )}
