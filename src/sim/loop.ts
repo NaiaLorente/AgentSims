@@ -1,5 +1,5 @@
 import { useSimStore, makeLogId, type SimState } from '../state/simStore';
-import type { Agent, Direction, Vec2, WalkGoal, WorldObject } from './types';
+import type { Agent, Direction, LogEntry, Vec2, WalkGoal, WorldObject } from './types';
 import { findPath } from './pathfinding';
 import { randomTile } from './world';
 import { addMemory } from './memory';
@@ -23,11 +23,18 @@ const IDLE_COOLDOWN_TICKS = 2;
 const MOVE_STEP = 5;
 const MAX_CONVERSATION_TURNS = 8;
 const MAX_WORLD_OBJECTS = 200;
+const MAX_LOG_ENTRIES = 500;
 
 let objectCounter = 0;
 function makeWorldObjectId(): string {
   objectCounter += 1;
   return `obj_${Date.now().toString(36)}_${objectCounter}`;
+}
+
+let conversationCounter = 0;
+function makeConversationId(): string {
+  conversationCounter += 1;
+  return `conv_${Date.now().toString(36)}_${conversationCounter}`;
 }
 
 function chebyshev(a: Vec2, b: Vec2): number {
@@ -36,6 +43,14 @@ function chebyshev(a: Vec2, b: Vec2): number {
 
 function agentSettings(globalSettings: SimState['settings'], agent: Agent): OllamaSettings {
   return { baseUrl: globalSettings.baseUrl, temperature: globalSettings.temperature, model: agent.model };
+}
+
+/** Every log write goes through here so the transcript can never grow unbounded over a long run. */
+function pushLogEntry(state: SimState, entry: Omit<LogEntry, 'id'>): void {
+  state.log.push({ id: makeLogId(), ...entry });
+  if (state.log.length > MAX_LOG_ENTRIES) {
+    state.log.splice(0, state.log.length - MAX_LOG_ENTRIES);
+  }
 }
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -156,6 +171,10 @@ function destinationForDirection(world: SimState['world'], from: Vec2, direction
   };
 }
 
+function describeObjectForMemory(o: WorldObject): string {
+  return o.natural ? o.content : `${o.creatorLabel}'s "${o.content}"`;
+}
+
 async function requestPlan(agentId: string): Promise<void> {
   const state0 = useSimStore.getState();
   const agent = state0.agents[agentId];
@@ -166,7 +185,22 @@ async function requestPlan(agentId: string): Promise<void> {
     .filter((o): o is Agent => !!o && o.id !== agentId && chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
   const nearbyObjects = state0.worldObjects.filter((o) => chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
 
-  const { system, user } = buildPlannerPrompt(agent, nearby, nearbyObjects);
+  // Note anything newly perceived so it can be recalled and returned to later, even if the
+  // agent doesn't interact with it right now — otherwise only things it acts on are ever
+  // remembered, and a place walked past but not touched would be lost the moment it's out of range.
+  const newlyNoticed = nearbyObjects.filter((o) => !agent.memory.some((m) => m.text.includes(o.id)));
+  if (newlyNoticed.length > 0) {
+    useSimStore.getState().mutate((state) => {
+      const a = state.agents[agentId];
+      if (!a) return;
+      for (const o of newlyNoticed) {
+        addMemory(a, state.clock.tick, 'noticed', `Noticed ${describeObjectForMemory(o)} nearby (id: "${o.id}")`);
+      }
+    });
+  }
+  const agentForPrompt = newlyNoticed.length > 0 ? (useSimStore.getState().agents[agentId] ?? agent) : agent;
+
+  const { system, user } = buildPlannerPrompt(agentForPrompt, nearby, nearbyObjects);
   const resp = await chatJSON<PlannerResponse>(
     agentSettings(state0.settings, agent),
     { system, user, schema: PLANNER_SCHEMA },
@@ -197,6 +231,21 @@ async function requestPlan(agentId: string): Promise<void> {
         }
         break;
       }
+      case 'go_to': {
+        const place = state.worldObjects.find((o) => o.id === intent.targetId);
+        if (!place) {
+          a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+          break;
+        }
+        const path = findPath(state.world, a.pos, place.pos);
+        if (path.length === 0) {
+          a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        } else {
+          a.path = path;
+          a.activity = { kind: 'walking', then: { kind: 'wander' } };
+        }
+        break;
+      }
       case 'talk_to': {
         const target = state.agents[intent.targetId];
         if (!target) {
@@ -211,13 +260,7 @@ async function requestPlan(agentId: string): Promise<void> {
         if (intent.message) {
           a.speech = { text: intent.message.slice(0, 200), expiresAtTick: now + 4 };
           addMemory(a, now, 'said', `You said: "${intent.message}"`);
-          state.log.push({
-            id: makeLogId(),
-            tick: now,
-            text: intent.message,
-            kind: 'conversation',
-            speakerLabel: a.label,
-          });
+          pushLogEntry(state, { tick: now, text: intent.message, kind: 'conversation', speakerLabel: a.label });
           for (const otherId of state.agentOrder) {
             if (otherId === agentId) continue;
             const other = state.agents[otherId];
@@ -234,9 +277,8 @@ async function requestPlan(agentId: string): Promise<void> {
           const existing = intent.targetId ? state.worldObjects.find((o) => o.id === intent.targetId) : undefined;
           if (existing) {
             existing.additions.push({ agentLabel: a.label, content: intent.content, tick: now });
-            addMemory(a, now, 'made', `You added to "${existing.content}": "${intent.content}"`);
-            state.log.push({
-              id: makeLogId(),
+            addMemory(a, now, 'made', `You added to "${existing.content}": "${intent.content}" (id: "${existing.id}")`);
+            pushLogEntry(state, {
               tick: now,
               text: `${a.label} added to "${existing.content}": "${intent.content}"`,
               kind: 'creation',
@@ -259,13 +301,8 @@ async function requestPlan(agentId: string): Promise<void> {
               const toRemove = new Set(agentMade.slice(0, overflow).map((o) => o.id));
               state.worldObjects = state.worldObjects.filter((o) => !toRemove.has(o.id));
             }
-            addMemory(a, now, 'made', `You left: "${intent.content}"`);
-            state.log.push({
-              id: makeLogId(),
-              tick: now,
-              text: `${a.label} made: "${intent.content}"`,
-              kind: 'creation',
-            });
+            addMemory(a, now, 'made', `You left: "${intent.content}" (id: "${obj.id}")`);
+            pushLogEntry(state, { tick: now, text: `${a.label} made: "${intent.content}"`, kind: 'creation' });
           }
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
@@ -279,6 +316,21 @@ async function requestPlan(agentId: string): Promise<void> {
 }
 
 async function runConversation(aId: string, bId: string): Promise<void> {
+  const initial = useSimStore.getState();
+  const aLabel = initial.agents[aId]?.label ?? aId;
+  const bLabel = initial.agents[bId]?.label ?? bId;
+  const conversationId = makeConversationId();
+
+  useSimStore.getState().mutate((state) => {
+    state.activeConversations[conversationId] = {
+      id: conversationId,
+      participantIds: [aId, bId],
+      participantLabels: [aLabel, bLabel],
+      lines: [],
+      startedTick: state.clock.tick,
+    };
+  });
+
   let speakerId = aId;
   let listenerId = bId;
   const transcript: TranscriptLine[] = [];
@@ -310,14 +362,14 @@ async function runConversation(aId: string, bId: string): Promise<void> {
           addMemory(sp, now, 'said', `You said to ${listener.label}: "${message}"`);
         }
         if (li) addMemory(li, now, 'heard', `${speaker.label} said to you: "${message}"`);
-        state.log.push({
-          id: makeLogId(),
+        pushLogEntry(state, {
           tick: now,
           text: message,
           kind: 'conversation',
           speakerLabel: speaker.label,
           listenerLabel: listener.label,
         });
+        state.activeConversations[conversationId]?.lines.push({ speakerLabel: speaker.label, text: message, tick: now });
       });
     }
 
@@ -331,5 +383,6 @@ async function runConversation(aId: string, bId: string): Promise<void> {
     const b = state.agents[bId];
     if (a && a.activity.kind === 'talking') a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
     if (b && b.activity.kind === 'talking') b.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+    delete state.activeConversations[conversationId];
   });
 }

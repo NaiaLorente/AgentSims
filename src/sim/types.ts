@@ -24,6 +24,7 @@ export type Direction = 'north' | 'south' | 'east' | 'west' | 'random';
 
 export type AgentIntent =
   | { kind: 'move'; direction: Direction }
+  | { kind: 'go_to'; targetId: string }
   | { kind: 'talk_to'; targetId: string }
   | { kind: 'say'; message: string }
   | { kind: 'create'; content: string; targetId?: string }
@@ -95,4 +96,20 @@ export interface SimClock {
   tick: number;
   running: boolean;
   ticksPerSecond: number; // playback speed
+}
+
+export interface ConversationLine {
+  speakerLabel: string;
+  text: string;
+  tick: number;
+}
+
+/** A conversation currently in flight, tracked separately from the flat transcript so
+ * simultaneous pairwise conversations (normal with 3+ agents) stay visually separable. */
+export interface ActiveConversation {
+  id: string;
+  participantIds: [string, string];
+  participantLabels: [string, string];
+  lines: ConversationLine[];
+  startedTick: number;
 }

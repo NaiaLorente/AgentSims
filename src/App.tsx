@@ -4,6 +4,8 @@ import { Controls } from './ui/Controls';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { AgentInspector } from './ui/AgentInspector';
 import { EventLog } from './ui/EventLog';
+import { WorldPanel } from './ui/WorldPanel';
+import { LiveConversations } from './ui/LiveConversations';
 import { startLoopWatcher } from './sim/loop';
 
 export default function App() {
@@ -28,6 +30,7 @@ export default function App() {
           <div className="flex justify-center overflow-auto rounded-lg bg-black/20 p-3">
             <CanvasWorld />
           </div>
+          <LiveConversations />
           <div className="h-56">
             <EventLog />
           </div>
@@ -36,6 +39,7 @@ export default function App() {
         <div className="flex flex-col gap-3">
           <SettingsPanel />
           <AgentInspector />
+          <WorldPanel />
         </div>
       </div>
     </div>

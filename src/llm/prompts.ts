@@ -12,7 +12,7 @@ import { formatMemoriesForPrompt } from '../sim/memory';
 export const PLANNER_SCHEMA = {
   type: 'object',
   properties: {
-    action: { type: 'string', enum: ['move', 'talk_to', 'say', 'create', 'wait'] },
+    action: { type: 'string', enum: ['move', 'go_to', 'talk_to', 'say', 'create', 'wait'] },
     direction: { type: 'string', enum: ['north', 'south', 'east', 'west', 'random'] },
     targetId: { type: 'string' },
     message: { type: 'string' },
@@ -51,13 +51,14 @@ export function buildPlannerPrompt(
 
 You can:
 - move (north, south, east, west, or let it be random)
+- go to a specific place you remember, if you know its id (see your history below) — it doesn't have to be nearby right now
 - talk to someone nearby, if you want to
 - say something out loud, to no one in particular
 - make something — leave anything at all where you're standing: an object, a message, a structure, a piece of writing, anything, described however you want. If something is already there (see below), you can add to it instead of starting something new
 - do nothing
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "talk_to" | "say" | "create" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "talk_to" (id of someone listed below) or if action is "create" and you're adding onto something that's already there (its id, from the list below), "message": only if action is "say", "content": only if action is "create" — whatever you're making or adding, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "create" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (the id of a place from your history) or "talk_to" (id of someone listed below) or "create" and you're adding onto something that's already there (its id, from the list below), "message": only if action is "say", "content": only if action is "create" — whatever you're making or adding, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -91,6 +92,11 @@ export function parseIntent(
       }
       return { kind: 'move', direction: 'random' };
     }
+    case 'go_to':
+      if (resp.targetId) {
+        return { kind: 'go_to', targetId: resp.targetId };
+      }
+      return { kind: 'wait' };
     case 'talk_to':
       if (resp.targetId && validTargetIds.has(resp.targetId)) {
         return { kind: 'talk_to', targetId: resp.targetId };

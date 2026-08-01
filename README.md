@@ -113,9 +113,18 @@ Most browsers exempt `localhost`, but if yours doesn't:
   — an agent only learns one exists by wandering close enough to notice it,
   the same way it'd notice another agent or something someone built. Nothing
   in the prompt says what they're for, or that they're significant at all.
+- **Returning to a place.** An agent can also head straight to somewhere it
+  remembers — its own id, recalled from memory — rather than only being able
+  to wander in a direction. Every place it's ever noticed or interacted with
+  is remembered this way, so it's possible to deliberately go back to
+  something built earlier instead of only rediscovering things by chance.
 - **Full transcript**: every line anyone says, and everything anyone makes,
   is logged live in the transcript panel and shown as an on-canvas speech
-  bubble as it happens — nothing is summarized or paraphrased.
+  bubble as it happens — nothing is summarized or paraphrased. Simultaneous
+  conversations (normal once there are 3+ agents) each get their own live
+  card above the transcript so they don't blur into one thread, and the
+  **World** panel lists every object's full, untruncated content and
+  contribution history separately from the scrolling feed.
 - **No relationship system, no milestones, no scoring.** Whatever affinity,
   conflict, or connection emerges is only visible in what the agents actually
   say and do — there's no hidden state machine interpreting it for you.

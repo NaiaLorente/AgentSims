@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Agent, LogEntry, SimClock, World, WorldObject } from '../sim/types';
+import type { ActiveConversation, Agent, LogEntry, SimClock, World, WorldObject } from '../sim/types';
 import { buildWorld } from '../sim/world';
 import { createNaturalFeatures } from '../sim/naturalFeatures';
 import {
@@ -36,6 +36,8 @@ export interface SimState {
   agentOrder: string[];
   agentConfigs: AgentConfig[];
   worldObjects: WorldObject[];
+  /** Conversations currently in flight, keyed by id — transient, not persisted across save/load. */
+  activeConversations: Record<string, ActiveConversation>;
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -87,6 +89,7 @@ export const useSimStore = create<SimState>()(
       agentOrder,
       agentConfigs: initialConfigs,
       worldObjects: createNaturalFeatures(),
+      activeConversations: {},
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
       settings: DEFAULT_CONNECTION_SETTINGS,
@@ -169,7 +172,7 @@ export const useSimStore = create<SimState>()(
       pushLog: (text, kind) =>
         set((state) => {
           state.log.push({ id: makeLogId(), tick: state.clock.tick, text, kind });
-          if (state.log.length > 300) state.log.splice(0, state.log.length - 300);
+          if (state.log.length > 500) state.log.splice(0, state.log.length - 500);
         }),
 
       reset: () =>
@@ -179,6 +182,7 @@ export const useSimStore = create<SimState>()(
           state.agents = fresh.agents;
           state.agentOrder = fresh.agentOrder;
           state.worldObjects = createNaturalFeatures();
+          state.activeConversations = {};
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;
