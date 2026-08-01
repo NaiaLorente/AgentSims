@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSimStore } from '../state/simStore';
-import type { Agent, World, Zone, ZoneKind } from '../sim/types';
+import type { Agent, World, Zone } from '../sim/types';
 
 const TILE = 32;
 const MIN_SCALE = 0.6;
@@ -283,49 +283,307 @@ function shade(hex: string, percent: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Zones — fixed places on the map, each rendered as a labeled tinted area
-// rather than a single point, since (unlike the old objects) they cover
-// ground an agent actually stands inside of.
+// Zones — fixed places on the map, each drawn as a small illustrated scene
+// sized to its footprint rather than a single icon, since agents actually
+// stand inside this area (not just next to a point).
 // ---------------------------------------------------------------------------
 
-const ZONE_COLOR: Record<ZoneKind, string> = {
-  house: '#c2793a',
-  shop: '#3b82f6',
-  restaurant: '#ef4444',
-  park: '#22c55e',
-};
+/** FNV-1a — needs good avalanche even for near-identical short strings
+ *  (e.g. "house-a" vs "house-b"), which a naive polynomial hash doesn't give. */
+function hashStr(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return (h % 1000) / 1000;
+}
 
-const ZONE_ICON: Record<ZoneKind, string> = {
-  house: '🏠',
-  shop: '🛒',
-  restaurant: '🍽️',
-  park: '🌳',
-};
+function drawZoneLabel(ctx: CanvasRenderingContext2D, cx: number, y: number, text: string) {
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const textW = ctx.measureText(text).width;
+  const boxW = textW + 12;
+  const boxH = 14;
+  roundRect(ctx, cx - boxW / 2, y - boxH / 2, boxW, boxH, 4);
+  ctx.fillStyle = 'rgba(10,14,10,0.6)';
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.fillText(text, cx, y + 0.5);
+}
 
-function drawZone(ctx: CanvasRenderingContext2D, zone: Zone) {
+function drawGroundShadow(ctx: CanvasRenderingContext2D, cx: number, groundY: number, rx: number, ry: number) {
+  ctx.beginPath();
+  ctx.ellipse(cx, groundY + 2, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fill();
+}
+
+function drawWindow(ctx: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  ctx.fillStyle = '#bfe3f0';
+  ctx.fillRect(x, y, size, size);
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, size, size);
+  ctx.beginPath();
+  ctx.moveTo(x + size / 2, y);
+  ctx.lineTo(x + size / 2, y + size);
+  ctx.moveTo(x, y + size / 2);
+  ctx.lineTo(x + size, y + size / 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.stroke();
+}
+
+function drawHouseScene(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number, t: number) {
+  const cx = x + w / 2;
+  const groundY = y + h * 0.82;
+  drawGroundShadow(ctx, cx, groundY, w * 0.32, h * 0.06);
+
+  const bodyW = w * 0.56;
+  const bodyH = h * 0.4;
+  const bodyTop = groundY - bodyH;
+  const bodyLeft = cx - bodyW / 2;
+
+  const wallColor = variant > 0.5 ? '#e9d9b8' : '#dcc9a3';
+  const roofColor = variant > 0.5 ? '#b5542c' : '#8a4a5f';
+
+  ctx.fillStyle = wallColor;
+  ctx.fillRect(bodyLeft, bodyTop, bodyW, bodyH);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bodyLeft, bodyTop, bodyW, bodyH);
+
+  const overhang = bodyW * 0.15;
+  const roofH = h * 0.28;
+  ctx.beginPath();
+  ctx.moveTo(bodyLeft - overhang, bodyTop + 2);
+  ctx.lineTo(cx, bodyTop - roofH);
+  ctx.lineTo(bodyLeft + bodyW + overhang, bodyTop + 2);
+  ctx.closePath();
+  ctx.fillStyle = roofColor;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.stroke();
+
+  const chimX = bodyLeft + bodyW * 0.7;
+  const chimW = bodyW * 0.12;
+  const chimTopY = bodyTop - roofH * 0.55;
+  ctx.fillStyle = shade(roofColor, -15);
+  ctx.fillRect(chimX, chimTopY, chimW, roofH * 0.5);
+
+  for (let i = 0; i < 3; i++) {
+    const puffT = (t * 0.6 + i * 0.4) % 1.5;
+    const puffY = chimTopY - puffT * 14;
+    const puffX = chimX + chimW / 2 + Math.sin(t + i) * 2;
+    const alpha = Math.max(0, 0.35 - puffT * 0.22);
+    ctx.beginPath();
+    ctx.arc(puffX, puffY, 2 + puffT * 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.fill();
+  }
+
+  const doorW = bodyW * 0.22;
+  const doorH = bodyH * 0.55;
+  ctx.fillStyle = '#5c3a21';
+  ctx.fillRect(cx - doorW / 2, groundY - doorH, doorW, doorH);
+
+  drawWindow(ctx, bodyLeft + bodyW * 0.16, bodyTop + bodyH * 0.2, bodyW * 0.18);
+}
+
+function drawAwning(
+  ctx: CanvasRenderingContext2D,
+  bodyLeft: number,
+  bodyTop: number,
+  bodyW: number,
+  awningH: number,
+  accent: string,
+) {
+  const stripes = 6;
+  const stripeW = bodyW / stripes;
+  const awningTop = bodyTop - awningH;
+  for (let i = 0; i < stripes; i++) {
+    const sx = bodyLeft + i * stripeW;
+    ctx.beginPath();
+    ctx.moveTo(sx, awningTop);
+    ctx.lineTo(sx + stripeW, awningTop);
+    ctx.lineTo(sx + stripeW, bodyTop);
+    ctx.lineTo(sx + stripeW / 2, bodyTop + 4);
+    ctx.lineTo(sx, bodyTop);
+    ctx.closePath();
+    ctx.fillStyle = i % 2 === 0 ? accent : '#f5f5f5';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
+}
+
+function drawShopScene(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  const cx = x + w / 2;
+  const groundY = y + h * 0.82;
+  drawGroundShadow(ctx, cx, groundY, w * 0.34, h * 0.06);
+
+  const bodyW = w * 0.62;
+  const bodyH = h * 0.36;
+  const bodyTop = groundY - bodyH;
+  const bodyLeft = cx - bodyW / 2;
+
+  ctx.fillStyle = '#dbe6ef';
+  ctx.fillRect(bodyLeft, bodyTop, bodyW, bodyH);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bodyLeft, bodyTop, bodyW, bodyH);
+
+  const winW = bodyW * 0.5;
+  const winH = bodyH * 0.55;
+  const winX = bodyLeft + bodyW * 0.08;
+  const winY = bodyTop + bodyH * 0.32;
+  ctx.fillStyle = '#89c9e8';
+  ctx.fillRect(winX, winY, winW, winH);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.strokeRect(winX, winY, winW, winH);
+  ['#f97316', '#eab308', '#ef4444'].forEach((c, i) => {
+    ctx.beginPath();
+    ctx.arc(winX + winW * (0.25 + i * 0.25), winY + winH * 0.68, 2.4, 0, Math.PI * 2);
+    ctx.fillStyle = c;
+    ctx.fill();
+  });
+
+  const doorW = bodyW * 0.2;
+  const doorH = bodyH * 0.62;
+  ctx.fillStyle = '#3b5169';
+  ctx.fillRect(bodyLeft + bodyW - doorW - bodyW * 0.06, groundY - doorH, doorW, doorH);
+
+  drawAwning(ctx, bodyLeft, bodyTop, bodyW, h * 0.14, '#3b82f6');
+}
+
+function drawRestaurantScene(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  const cx = x + w * 0.4;
+  const groundY = y + h * 0.82;
+  drawGroundShadow(ctx, cx, groundY, w * 0.28, h * 0.06);
+
+  const bodyW = w * 0.5;
+  const bodyH = h * 0.36;
+  const bodyTop = groundY - bodyH;
+  const bodyLeft = cx - bodyW / 2;
+
+  ctx.fillStyle = '#ecdcc0';
+  ctx.fillRect(bodyLeft, bodyTop, bodyW, bodyH);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bodyLeft, bodyTop, bodyW, bodyH);
+
+  drawWindow(ctx, bodyLeft + bodyW * 0.12, bodyTop + bodyH * 0.3, bodyW * 0.26);
+
+  const doorW = bodyW * 0.24;
+  const doorH = bodyH * 0.6;
+  ctx.fillStyle = '#6b3a2a';
+  ctx.fillRect(bodyLeft + bodyW - doorW - bodyW * 0.1, groundY - doorH, doorW, doorH);
+
+  drawAwning(ctx, bodyLeft, bodyTop, bodyW, h * 0.15, '#ef4444');
+
+  // outdoor seating beside the building
+  const tableX = x + w * 0.82;
+  drawGroundShadow(ctx, tableX, groundY, w * 0.1, h * 0.04);
+  ctx.fillStyle = 'rgba(60,40,20,0.7)';
+  ctx.beginPath();
+  ctx.moveTo(tableX, groundY - h * 0.28);
+  ctx.lineTo(tableX, groundY - h * 0.03);
+  ctx.strokeStyle = 'rgba(60,40,20,0.7)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(tableX - w * 0.1, groundY - h * 0.28);
+  ctx.lineTo(tableX, groundY - h * 0.4);
+  ctx.lineTo(tableX + w * 0.1, groundY - h * 0.28);
+  ctx.closePath();
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(tableX, groundY - h * 0.03, w * 0.07, h * 0.025, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#caa06e';
+  ctx.fill();
+}
+
+function drawTree(ctx: CanvasRenderingContext2D, cx: number, groundY: number, size: number, seed: number, t: number) {
+  const trunkW = size * 0.18;
+  const trunkH = size * 0.5;
+  drawGroundShadow(ctx, cx, groundY, size * 0.45, size * 0.12);
+  ctx.fillStyle = '#6b4423';
+  ctx.fillRect(cx - trunkW / 2, groundY - trunkH, trunkW, trunkH);
+
+  const sway = Math.sin(t * 1.3 + seed * 10) * 1.5;
+  const greens = ['#2f9e44', '#37b24d', '#40c057'];
+  const canopyY = groundY - trunkH - size * 0.3;
+  const offsets: [number, number][] = [
+    [-0.28, 0],
+    [0.28, 0],
+    [0, -0.3],
+  ];
+  offsets.forEach(([dx, dy], i) => {
+    ctx.beginPath();
+    ctx.arc(cx + dx * size + sway * 0.3, canopyY + dy * size, size * 0.32, 0, Math.PI * 2);
+    ctx.fillStyle = greens[(i + Math.floor(seed * 3)) % greens.length];
+    ctx.fill();
+  });
+}
+
+function drawBench(ctx: CanvasRenderingContext2D, cx: number, groundY: number, size: number) {
+  const w = size * 1.1;
+  const seatH = size * 0.12;
+  const backH = size * 0.35;
+  drawGroundShadow(ctx, cx, groundY, w * 0.55, size * 0.1);
+  ctx.fillStyle = '#8a6d3b';
+  ctx.fillRect(cx - w / 2 + 2, groundY - seatH, 2, seatH);
+  ctx.fillRect(cx + w / 2 - 4, groundY - seatH, 2, seatH);
+  ctx.fillRect(cx - w / 2, groundY - seatH - 3, w, 3);
+  ctx.fillRect(cx - w / 2, groundY - seatH - backH, w, 3);
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - w / 2, groundY - seatH - backH, w, backH);
+}
+
+function drawParkScene(ctx: CanvasRenderingContext2D, zone: Zone, x: number, y: number, w: number, h: number, t: number) {
+  const positions: [number, number][] = [
+    [0.2, 0.22],
+    [0.8, 0.25],
+    [0.78, 0.78],
+  ];
+  positions.forEach(([dx, dy], i) => {
+    const seed = hashStr(`${zone.id}-tree-${i}`);
+    const cx = x + w * (dx + (seed - 0.5) * 0.06);
+    const groundY = y + h * (dy + (seed - 0.5) * 0.05);
+    drawTree(ctx, cx, groundY, Math.min(w, h) * 0.24, seed, t);
+  });
+  drawBench(ctx, x + w * 0.25, y + h * 0.72, Math.min(w, h) * 0.2);
+}
+
+function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number) {
   const x = zone.bounds.x * TILE;
   const y = zone.bounds.y * TILE;
   const w = zone.bounds.w * TILE;
   const h = zone.bounds.h * TILE;
-  const color = ZONE_COLOR[zone.kind];
 
+  // subtle footprint so the walkable area is still legible under the scene
   roundRect(ctx, x, y, w, h, 8);
-  ctx.fillStyle = `${color}33`;
+  ctx.fillStyle = 'rgba(255,255,255,0.035)';
   ctx.fill();
-  ctx.strokeStyle = `${color}aa`;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.setLineDash([]);
 
-  ctx.font = '16px system-ui';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(ZONE_ICON[zone.kind], x + w / 2, y + h / 2 - 4);
+  if (zone.kind === 'house') {
+    drawHouseScene(ctx, x, y, w, h, hashStr(zone.id), t);
+  } else if (zone.kind === 'shop') {
+    drawShopScene(ctx, x, y, w, h);
+  } else if (zone.kind === 'restaurant') {
+    drawRestaurantScene(ctx, x, y, w, h);
+  } else {
+    drawParkScene(ctx, zone, x, y, w, h, t);
+  }
 
-  ctx.font = '10px system-ui';
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.fillText(zone.name, x + w / 2, y + h / 2 + 14);
+  drawZoneLabel(ctx, x + w / 2, y - 8, zone.name);
 }
 
 function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string) {
@@ -403,7 +661,7 @@ export function CanvasWorld() {
       drawGround(ctx, state.world, t);
 
       for (const zone of state.zones) {
-        drawZone(ctx, zone);
+        drawZone(ctx, zone, t);
       }
 
       const targets = agentTargets(state.agentOrder, state.agents);
