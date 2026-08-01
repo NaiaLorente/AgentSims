@@ -1,123 +1,53 @@
-import type { Agent } from './types';
-import { makeFullNeeds } from './needs';
-import { getLocation } from './world';
-import type { World } from './types';
+import type { Agent, World } from './types';
+import { randomTile } from './world';
 
-interface SeedAgent {
+export interface AgentConfig {
   id: string;
-  name: string;
-  emoji: string;
-  color: string;
-  bio: string;
-  traits: string[];
-  homeLocationId: string;
+  label: string;
+  model: string;
 }
 
-const SEED_AGENTS: SeedAgent[] = [
-  {
-    id: 'alex',
-    name: 'Alex',
-    emoji: '🧑',
-    color: '#f97316',
-    bio: 'A restless painter who talks to strangers a little too easily.',
-    traits: ['curious', 'flirtatious', 'impulsive'],
-    homeLocationId: 'home_a',
-  },
-  {
-    id: 'briar',
-    name: 'Briar',
-    emoji: '🧑‍🦱',
-    color: '#22c55e',
-    bio: 'A quiet gardener who prefers routines and old books to small talk.',
-    traits: ['introverted', 'loyal', 'stubborn'],
-    homeLocationId: 'home_a',
-  },
-  {
-    id: 'coral',
-    name: 'Coral',
-    emoji: '👩',
-    color: '#06b6d4',
-    bio: 'A sharp-tongued barista who says exactly what she thinks.',
-    traits: ['blunt', 'witty', 'competitive'],
-    homeLocationId: 'home_b',
-  },
-  {
-    id: 'dax',
-    name: 'Dax',
-    emoji: '🧔',
-    color: '#a855f7',
-    bio: 'An easygoing musician who falls for people fast and hard.',
-    traits: ['romantic', 'charming', 'disorganized'],
-    homeLocationId: 'home_b',
-  },
-  {
-    id: 'ember',
-    name: 'Ember',
-    emoji: '👱',
-    color: '#ef4444',
-    bio: 'A hot-headed ex-athlete still figuring out what she wants.',
-    traits: ['ambitious', 'jealous', 'passionate'],
-    homeLocationId: 'home_a',
-  },
+const COLOR_PALETTE = [
+  '#f97316',
+  '#22c55e',
+  '#06b6d4',
+  '#a855f7',
+  '#ef4444',
+  '#eab308',
+  '#3b82f6',
+  '#ec4899',
 ];
 
-export function createInitialAgents(world: World): Agent[] {
-  const homeSlot: Record<string, number> = {};
-  return SEED_AGENTS.map((seed) => {
-    const home = getLocation(world, seed.homeLocationId);
-    const slot = homeSlot[seed.homeLocationId] ?? 0;
-    homeSlot[seed.homeLocationId] = slot + 1;
-    const startPos = home.footprint[slot % home.footprint.length];
-    return {
-      id: seed.id,
-      name: seed.name,
-      emoji: seed.emoji,
-      color: seed.color,
-      persona: { bio: seed.bio, traits: seed.traits },
-      homeLocationId: seed.homeLocationId,
-      pos: { ...startPos },
-      path: [],
-      needs: makeFullNeeds(),
-      activity: { kind: 'idle', cooldownUntilTick: 0 },
-      relationships: {},
-      memory: [],
-      speech: null,
-      isChild: false,
-      generation: 0,
-      parentIds: [],
-    } satisfies Agent;
-  });
+let configCounter = 0;
+
+export function makeAgentConfigId(): string {
+  configCounter += 1;
+  return `agentcfg_${Date.now().toString(36)}_${configCounter}`;
 }
 
-let childCounter = 0;
+export function defaultAgentConfigs(): AgentConfig[] {
+  return [
+    { id: makeAgentConfigId(), label: 'Agent 1', model: '' },
+    { id: makeAgentConfigId(), label: 'Agent 2', model: '' },
+    { id: makeAgentConfigId(), label: 'Agent 3', model: '' },
+  ];
+}
 
-export function spawnChild(world: World, parentA: Agent, parentB: Agent): Agent {
-  childCounter += 1;
-  const home = getLocation(world, parentA.homeLocationId);
-  const names = ['Sky', 'Wren', 'Robin', 'River', 'Sage', 'Juniper', 'Ash', 'Lark'];
-  const name = names[(childCounter - 1) % names.length] + (childCounter > names.length ? ` ${childCounter}` : '');
-  const traitPool = [...parentA.persona.traits, ...parentB.persona.traits];
-  const traits = Array.from(new Set(traitPool)).slice(0, 3);
+export function colorForIndex(index: number): string {
+  return COLOR_PALETTE[index % COLOR_PALETTE.length];
+}
 
-  return {
-    id: `child_${Date.now().toString(36)}_${childCounter}`,
-    name,
-    emoji: '🧒',
-    color: parentA.color,
-    persona: {
-      bio: `Child of ${parentA.name} and ${parentB.name}, still finding their own way.`,
-      traits: traits.length > 0 ? traits : ['curious'],
-    },
-    homeLocationId: parentA.homeLocationId,
-    pos: { ...home.anchor },
+/** Builds the live, running agents for a simulation from the configured roster. No personas, no needs. */
+export function createAgentsFromConfigs(configs: AgentConfig[], world: World): Agent[] {
+  return configs.map((config, index) => ({
+    id: config.id,
+    label: config.label.trim() || `Agent ${index + 1}`,
+    model: config.model,
+    color: colorForIndex(index),
+    pos: randomTile(world),
     path: [],
-    needs: makeFullNeeds(),
     activity: { kind: 'idle', cooldownUntilTick: 0 },
-    relationships: {},
     memory: [],
     speech: null,
-    isChild: true,
-    generation: Math.max(parentA.generation, parentB.generation) + 1,
-    parentIds: [parentA.id, parentB.id],
-  } satisfies Agent;
+  }));
 }

@@ -16,7 +16,8 @@ export default function App() {
       <header>
         <h1 className="text-xl font-semibold">AgentSims</h1>
         <p className="text-xs text-white/50">
-          A handful of AI residents living their own lives — watch them wander, chat, and form relationships.
+          Several LLMs dropped into a shared space with total free will — no personality, no goals, no rules.
+          Watch what each model actually does.
         </p>
       </header>
 

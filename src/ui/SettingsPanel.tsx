@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSimStore } from '../state/simStore';
 import { listModels, testConnection } from '../llm/ollamaClient';
+import { colorForIndex } from '../sim/agents';
 
 export function SettingsPanel() {
   const settings = useSimStore((s) => s.settings);
@@ -10,6 +11,10 @@ export function SettingsPanel() {
   const connectionStatus = useSimStore((s) => s.connectionStatus);
   const connectionError = useSimStore((s) => s.connectionError);
   const setConnectionStatus = useSimStore((s) => s.setConnectionStatus);
+  const agentConfigs = useSimStore((s) => s.agentConfigs);
+  const addAgentConfig = useSimStore((s) => s.addAgentConfig);
+  const removeAgentConfig = useSimStore((s) => s.removeAgentConfig);
+  const updateAgentConfig = useSimStore((s) => s.updateAgentConfig);
 
   const [baseUrlDraft, setBaseUrlDraft] = useState(settings.baseUrl);
   const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
@@ -25,9 +30,6 @@ export function SettingsPanel() {
       const models = await listModels(baseUrl);
       setAvailableModels(models);
       setConnectionStatus('ok');
-      if (models.length > 0 && !models.includes(settings.model)) {
-        setSettings({ model: models[0] });
-      }
     } catch (err) {
       setConnectionStatus('error', String(err));
     }
@@ -35,7 +37,7 @@ export function SettingsPanel() {
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-white/60">Ollama settings</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-white/60">Ollama connection</h2>
 
       <label className="flex flex-col gap-1">
         <span className="text-xs text-white/60">Base URL</span>
@@ -72,31 +74,12 @@ export function SettingsPanel() {
           }`}
         />
         <span className="text-white/60">
-          {connectionStatus === 'ok' && 'Connected'}
+          {connectionStatus === 'ok' && `Connected${availableModels.length ? ` — ${availableModels.length} model(s) found` : ''}`}
           {connectionStatus === 'error' && (connectionError ?? 'Connection failed')}
           {connectionStatus === 'checking' && 'Checking…'}
           {connectionStatus === 'unknown' && 'Not tested yet'}
         </span>
       </div>
-
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-white/60">Model</span>
-        <select
-          value={settings.model}
-          onChange={(e) => setSettings({ model: e.target.value })}
-          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs"
-        >
-          {settings.model && !availableModels.includes(settings.model) && (
-            <option value={settings.model}>{settings.model}</option>
-          )}
-          {availableModels.length === 0 && <option value="">(test connection to list models)</option>}
-          {availableModels.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-xs text-white/60">Temperature: {settings.temperature.toFixed(1)}</span>
@@ -112,9 +95,9 @@ export function SettingsPanel() {
 
       <div className="rounded-md bg-black/20 p-2 text-[11px] leading-relaxed text-white/50">
         Requires a local <strong>Ollama</strong> server (free, no API key). Install it, then run{' '}
-        <code className="rounded bg-black/40 px-1">ollama pull llama3.2</code> and start it with{' '}
-        <code className="rounded bg-black/40 px-1">OLLAMA_ORIGINS=* ollama serve</code> so this page is allowed to
-        call it.
+        <code className="rounded bg-black/40 px-1">ollama pull llama3.2</code> (and any other models you want to
+        compare) and start it with <code className="rounded bg-black/40 px-1">OLLAMA_ORIGINS=* ollama serve</code>{' '}
+        so this page is allowed to call it.
         {isHttpsPage && (
           <>
             {' '}
@@ -124,6 +107,57 @@ export function SettingsPanel() {
           </>
         )}
       </div>
+
+      <div className="mt-1 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-white/60">Agents</h2>
+        <button onClick={addAgentConfig} className="rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20">
+          + Add agent
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {agentConfigs.map((cfg, index) => (
+          <div key={cfg.id} className="flex items-center gap-1.5">
+            <span
+              className="h-3 w-3 shrink-0 rounded-full"
+              style={{ backgroundColor: colorForIndex(index) }}
+              aria-hidden
+            />
+            <input
+              value={cfg.label}
+              onChange={(e) => updateAgentConfig(cfg.id, { label: e.target.value })}
+              className="w-20 min-w-0 rounded-md border border-white/10 bg-black/30 px-1.5 py-1 text-xs"
+              placeholder={`Agent ${index + 1}`}
+            />
+            <select
+              value={cfg.model}
+              onChange={(e) => updateAgentConfig(cfg.id, { model: e.target.value })}
+              className="flex-1 min-w-0 rounded-md border border-white/10 bg-black/30 px-1.5 py-1 text-xs"
+            >
+              <option value="">(no model — inert)</option>
+              {cfg.model && !availableModels.includes(cfg.model) && <option value={cfg.model}>{cfg.model}</option>}
+              {availableModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => removeAgentConfig(cfg.id)}
+              className="rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-red-600/60"
+              aria-label={`Remove ${cfg.label}`}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {agentConfigs.length === 0 && <p className="text-xs text-white/40">No agents configured.</p>}
+      </div>
+
+      <p className="text-[11px] text-white/40">
+        Assign a different model to each agent to compare how they behave. Roster changes take effect next time you
+        hit <strong>Reset</strong>.
+      </p>
     </div>
   );
 }

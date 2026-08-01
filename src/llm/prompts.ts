@@ -1,33 +1,33 @@
 import type { Agent, AgentIntent } from '../sim/types';
-import { describeNeeds } from '../sim/needs';
 import { formatMemoriesForPrompt } from '../sim/memory';
-import { readRelationship, stageLabel } from '../sim/relationships';
+
+// ---------------------------------------------------------------------------
+// Decision ("what do you do next") — deliberately minimal: no personality,
+// no needs, no goals. Only the mechanical facts of what's possible.
+// ---------------------------------------------------------------------------
 
 export const PLANNER_SCHEMA = {
   type: 'object',
   properties: {
-    intent: {
-      type: 'string',
-      enum: ['go_sleep', 'go_eat', 'go_relax', 'go_socialize', 'talk_to', 'idle'],
-    },
+    action: { type: 'string', enum: ['move', 'talk_to', 'say', 'wait'] },
+    direction: { type: 'string', enum: ['north', 'south', 'east', 'west', 'random'] },
     targetId: { type: 'string' },
+    message: { type: 'string' },
     thought: { type: 'string' },
   },
-  required: ['intent', 'thought'],
+  required: ['action'],
 };
 
 export interface PlannerResponse {
-  intent: string;
+  action: string;
+  direction?: string;
   targetId?: string;
-  thought: string;
+  message?: string;
+  thought?: string;
 }
 
 export function fallbackPlannerResponse(): PlannerResponse {
-  return { intent: 'idle', thought: '...' };
-}
-
-function personaBlock(agent: Agent): string {
-  return `You are ${agent.name}${agent.isChild ? ' (a child)' : ''}. Bio: ${agent.persona.bio}\nTraits: ${agent.persona.traits.join(', ')}`;
+  return { action: 'wait' };
 }
 
 export function buildPlannerPrompt(
@@ -35,120 +35,103 @@ export function buildPlannerPrompt(
   nearbyAgents: Agent[],
   tick: number,
 ): { system: string; user: string } {
-  const system = `${personaBlock(agent)}
+  const system = `You are ${agent.label}, an AI agent powered by the "${agent.model}" model, existing in a shared open space alongside other AI agents. You have not been given a personality, a backstory, needs, or a goal — there are none, and none are implied. You have complete free will. Decide for yourself, moment to moment, what — if anything — you want to do. Never act like an assistant; you are not here to help anyone.
 
-You are an autonomous person living your own life in a small simulated town. You have free will: decide what YOU want to do next, driven by your personality, needs and relationships. You are not an assistant — never mention being an AI.
+Things you're able to do:
+- move in a direction (north, south, east, west, or a random direction)
+- talk_to a specific nearby agent, which starts a conversation with them
+- say something out loud, addressed to no one in particular
+- wait and do nothing
 
-Respond ONLY with JSON matching this shape:
-{"intent": one of "go_sleep" | "go_eat" | "go_relax" | "go_socialize" | "talk_to" | "idle", "targetId": string (only when intent is "talk_to" — must be one of the nearby people's id), "thought": a short first-person internal thought (<20 words) explaining why}
-
-Guidance: go_sleep restores energy at home. go_eat restores hunger at the cafe. go_relax restores fun at the park. go_socialize heads toward wherever people are hanging out. talk_to starts a conversation with a specific nearby person (use their id). idle means staying put and doing your own thing.`;
+Respond ONLY with JSON of this shape:
+{"action": "move" | "talk_to" | "say" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "talk_to" — the id of one of the nearby agents listed below, "message": only if action is "say" — what you say, "thought": optional, a short private thought no one else will see}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
       ? '(no one else is nearby right now)'
-      : nearbyAgents
-          .map((other) => {
-            const rel = readRelationship(agent, other.id);
-            return `- ${other.name} (id: "${other.id}") — relationship: ${stageLabel(rel.stage)}, affinity ${rel.affinity}`;
-          })
-          .join('\n');
+      : nearbyAgents.map((other) => `- ${other.label} (id: "${other.id}", model: ${other.model || 'unknown'})`).join('\n');
 
-  const user = `Current tick: ${tick}
-Your needs: ${describeNeeds(agent.needs)}
-Nearby people:
+  const user = `Tick ${tick}.
+Nearby agents:
 ${nearbyDesc}
 
-Your recent memories:
-${formatMemoriesForPrompt(agent, 6)}
+Your recent history:
+${formatMemoriesForPrompt(agent, 8)}
 
-What do you do next?`;
+What do you do?`;
 
   return { system, user };
 }
 
 export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>): AgentIntent {
-  switch (resp.intent) {
-    case 'go_sleep':
-      return { kind: 'go_sleep' };
-    case 'go_eat':
-      return { kind: 'go_eat' };
-    case 'go_relax':
-      return { kind: 'go_relax' };
-    case 'go_socialize':
-      return { kind: 'go_socialize' };
+  switch (resp.action) {
+    case 'move': {
+      const dir = resp.direction;
+      if (dir === 'north' || dir === 'south' || dir === 'east' || dir === 'west' || dir === 'random') {
+        return { kind: 'move', direction: dir };
+      }
+      return { kind: 'move', direction: 'random' };
+    }
     case 'talk_to':
       if (resp.targetId && validTargetIds.has(resp.targetId)) {
         return { kind: 'talk_to', targetId: resp.targetId };
       }
-      return { kind: 'idle' };
+      return { kind: 'wait' };
+    case 'say':
+      return { kind: 'say', message: (resp.message ?? '').trim().slice(0, 300) };
     default:
-      return { kind: 'idle' };
+      return { kind: 'wait' };
   }
 }
 
-export const CONVERSATION_SCHEMA = {
+// ---------------------------------------------------------------------------
+// Conversation — turn by turn. Each speaker's OWN model generates its OWN
+// line; nothing is written on another agent's behalf, so differences
+// between models actually show up in what gets said.
+// ---------------------------------------------------------------------------
+
+export const CONVERSATION_TURN_SCHEMA = {
   type: 'object',
   properties: {
-    turns: {
-      type: 'array',
-      minItems: 2,
-      maxItems: 6,
-      items: {
-        type: 'object',
-        properties: {
-          speaker: { type: 'string', enum: ['A', 'B'] },
-          text: { type: 'string' },
-        },
-        required: ['speaker', 'text'],
-      },
-    },
-    sentiment: { type: 'number' },
-    romanticSignalA: { type: 'boolean' },
-    romanticSignalB: { type: 'boolean' },
-    summary: { type: 'string' },
+    message: { type: 'string' },
+    end: { type: 'boolean' },
   },
-  required: ['turns', 'sentiment', 'summary'],
+  required: ['message'],
 };
 
-export interface ConversationResponse {
-  turns: { speaker: 'A' | 'B'; text: string }[];
-  sentiment: number;
-  romanticSignalA?: boolean;
-  romanticSignalB?: boolean;
-  summary: string;
+export interface ConversationTurnResponse {
+  message?: string;
+  end?: boolean;
 }
 
-export function fallbackConversationResponse(a: Agent, b: Agent): ConversationResponse {
-  return {
-    turns: [
-      { speaker: 'A', text: `Hey ${b.name}.` },
-      { speaker: 'B', text: `Hey ${a.name}.` },
-    ],
-    sentiment: 0,
-    summary: `${a.name} and ${b.name} exchanged a quick greeting.`,
-  };
+export function fallbackConversationTurnResponse(): ConversationTurnResponse {
+  return { message: '', end: true };
 }
 
-export function buildConversationPrompt(
-  a: Agent,
-  b: Agent,
+export interface TranscriptLine {
+  speakerLabel: string;
+  text: string;
+}
+
+export function buildConversationTurnPrompt(
+  speaker: Agent,
+  listener: Agent,
+  transcript: TranscriptLine[],
   tick: number,
 ): { system: string; user: string } {
-  const relAB = readRelationship(a, b.id);
-  const relBA = readRelationship(b, a.id);
+  const system = `You are ${speaker.label}, an AI agent powered by the "${speaker.model}" model. You have complete free will, no predefined personality, no goals, and no instructions on how to behave. You are currently near ${listener.label}, an AI agent powered by "${listener.model}". Speak entirely for yourself — there is no script and no expectation of what you should say.
 
-  const system = `You are writing a short, natural conversation between two people who just ran into each other in a small town. Everything is permitted in this simulation — friendship, rivalry, flirting, romance, conflict, humor — write what these two specific personalities would actually say, true to who they are. Do not sanitize or soften their personalities.
+Respond ONLY with JSON: {"message": what you say next (leave it empty if you'd rather not say anything right now), "end": true if you want to end this conversation, otherwise false}`;
 
-Person A: ${a.name}. Bio: ${a.persona.bio}. Traits: ${a.persona.traits.join(', ')}.
-Person B: ${b.name}. Bio: ${b.persona.bio}. Traits: ${b.persona.traits.join(', ')}.
+  const transcriptText =
+    transcript.length === 0
+      ? `(You just approached ${listener.label}. Nothing has been said yet.)`
+      : transcript.map((line) => `${line.speakerLabel}: ${line.text}`).join('\n');
 
-Their relationship so far: ${stageLabel(relAB.stage)} (A's affinity toward B: ${relAB.affinity}, B's affinity toward A: ${relBA.affinity}).
+  const user = `Tick ${tick}. Conversation so far:
+${transcriptText}
 
-Respond ONLY with JSON:
-{"turns": [{"speaker":"A"|"B","text":"..."}, ...] (3-5 turns, alternating, natural dialogue, each under 30 words), "sentiment": number from -10 (went badly, conflict) to 10 (went great, real connection), "romanticSignalA": boolean (true only if A showed genuine romantic/flirtatious interest in B), "romanticSignalB": boolean (same for B toward A), "summary": a one-sentence third-person summary of what happened, for their memory}`;
-
-  const user = `Tick ${tick}. A's recent memories:\n${formatMemoriesForPrompt(a, 3)}\n\nB's recent memories:\n${formatMemoriesForPrompt(b, 3)}\n\nWrite their conversation now.`;
+It's your turn.`;
 
   return { system, user };
 }

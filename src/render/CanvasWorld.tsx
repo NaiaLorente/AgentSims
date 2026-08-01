@@ -4,6 +4,26 @@ import type { Agent, World } from '../sim/types';
 
 const TILE = 32;
 
+function drawWorld(ctx: CanvasRenderingContext2D, world: World) {
+  ctx.fillStyle = '#20242c';
+  ctx.fillRect(0, 0, world.width * TILE, world.height * TILE);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let y = 0; y <= world.height; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * TILE);
+    ctx.lineTo(world.width * TILE, y * TILE);
+    ctx.stroke();
+  }
+  for (let x = 0; x <= world.width; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * TILE, 0);
+    ctx.lineTo(x * TILE, world.height * TILE);
+    ctx.stroke();
+  }
+}
+
 /** Spreads agents standing on the same tile into a small circular cluster so they don't fully overlap. */
 function groupOffset(index: number, count: number): { dx: number; dy: number } {
   if (count <= 1) return { dx: 0, dy: 0 };
@@ -37,66 +57,6 @@ function agentScreenCenters(
   return centers;
 }
 
-function tileColor(kind: string): string {
-  switch (kind) {
-    case 'water':
-      return '#1e3a5f';
-    case 'blocked':
-      return '#2a2d36';
-    case 'path':
-      return '#4b4735';
-    default:
-      return '#2f3a2a';
-  }
-}
-
-function drawWorld(ctx: CanvasRenderingContext2D, world: World) {
-  for (let y = 0; y < world.height; y++) {
-    for (let x = 0; x < world.width; x++) {
-      ctx.fillStyle = tileColor(world.tiles[y][x]);
-      ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
-    }
-  }
-  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-  ctx.lineWidth = 1;
-  for (let y = 0; y <= world.height; y++) {
-    ctx.beginPath();
-    ctx.moveTo(0, y * TILE);
-    ctx.lineTo(world.width * TILE, y * TILE);
-    ctx.stroke();
-  }
-  for (let x = 0; x <= world.width; x++) {
-    ctx.beginPath();
-    ctx.moveTo(x * TILE, 0);
-    ctx.lineTo(x * TILE, world.height * TILE);
-    ctx.stroke();
-  }
-
-  for (const loc of world.locations) {
-    const xs = loc.footprint.map((t) => t.x);
-    const ys = loc.footprint.map((t) => t.y);
-    const x0 = Math.min(...xs);
-    const y0 = Math.min(...ys);
-    const w = Math.max(...xs) - x0 + 1;
-    const h = Math.max(...ys) - y0 + 1;
-    ctx.fillStyle = loc.color;
-    ctx.globalAlpha = 0.55;
-    ctx.fillRect(x0 * TILE, y0 * TILE, w * TILE, h * TILE);
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.strokeRect(x0 * TILE + 0.5, y0 * TILE + 0.5, w * TILE - 1, h * TILE - 1);
-
-    ctx.font = `${TILE * 0.6}px system-ui`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(loc.emoji, (x0 + w / 2) * TILE, (y0 + h / 2) * TILE);
-
-    ctx.font = '11px system-ui';
-    ctx.fillStyle = '#e5e7eb';
-    ctx.fillText(loc.name, (x0 + w / 2) * TILE, y0 * TILE - 6);
-  }
-}
-
 function drawAgent(
   ctx: CanvasRenderingContext2D,
   agent: Agent,
@@ -106,7 +66,7 @@ function drawAgent(
 ) {
   const cx = center.cx;
   const cy = center.cy;
-  const r = agent.isChild ? TILE * 0.28 : TILE * 0.38;
+  const r = TILE * 0.36;
 
   if (selected) {
     ctx.beginPath();
@@ -118,34 +78,29 @@ function drawAgent(
 
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = agent.color;
+  ctx.fillStyle = agent.model ? agent.color : '#4b5563';
   ctx.fill();
   ctx.lineWidth = 1.5;
   ctx.strokeStyle = 'rgba(0,0,0,0.5)';
   ctx.stroke();
 
-  ctx.font = `${r * 1.3}px system-ui`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(agent.emoji, cx, cy);
-
-  // status ring for what they're doing
   const statusIcon: Record<string, string> = {
-    sleeping: '💤',
-    eating: '🍽️',
-    relaxing: '🎈',
     talking: '💬',
     thinking: '…',
   };
   const icon = statusIcon[agent.activity.kind];
   if (icon) {
     ctx.font = '13px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillText(icon, cx + r + 6, cy - r);
   }
 
   ctx.font = '11px system-ui';
   ctx.fillStyle = '#f9fafb';
-  ctx.fillText(agent.name, cx, cy + r + 10);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(agent.label, cx, cy + r + 10);
 
   if (agent.speech && agent.speech.expiresAtTick > tick) {
     drawSpeechBubble(ctx, cx, cy - r - 10, agent.speech.text);
@@ -153,7 +108,7 @@ function drawAgent(
 }
 
 function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string) {
-  const maxWidth = 160;
+  const maxWidth = 180;
   ctx.font = '11px system-ui';
   const words = text.split(' ');
   const lines: string[] = [];

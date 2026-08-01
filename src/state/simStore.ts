@@ -2,8 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Agent, LogEntry, SimClock, World } from '../sim/types';
 import { buildWorld } from '../sim/world';
-import { createInitialAgents } from '../sim/agents';
-import { DEFAULT_SETTINGS, type OllamaSettings } from '../llm/ollamaClient';
+import { type AgentConfig, createAgentsFromConfigs, defaultAgentConfigs, makeAgentConfigId } from '../sim/agents';
 
 let logCounter = 0;
 export function makeLogId(): string {
@@ -13,19 +12,33 @@ export function makeLogId(): string {
 
 export type ConnectionStatus = 'unknown' | 'checking' | 'ok' | 'error';
 
+export interface ConnectionSettings {
+  baseUrl: string;
+  temperature: number;
+}
+
+const DEFAULT_CONNECTION_SETTINGS: ConnectionSettings = {
+  baseUrl: 'http://localhost:11434',
+  temperature: 0.8,
+};
+
 export interface SimState {
   world: World;
   agents: Record<string, Agent>;
   agentOrder: string[];
+  agentConfigs: AgentConfig[];
   log: LogEntry[];
   clock: SimClock;
-  settings: OllamaSettings;
+  settings: ConnectionSettings;
   connectionStatus: ConnectionStatus;
   connectionError: string | null;
   availableModels: string[];
   selectedAgentId: string | null;
 
-  setSettings: (partial: Partial<OllamaSettings>) => void;
+  setSettings: (partial: Partial<ConnectionSettings>) => void;
+  addAgentConfig: () => void;
+  removeAgentConfig: (id: string) => void;
+  updateAgentConfig: (id: string, partial: Partial<AgentConfig>) => void;
   setAvailableModels: (models: string[]) => void;
   setConnectionStatus: (status: ConnectionStatus, error?: string | null) => void;
   selectAgent: (id: string | null) => void;
@@ -38,32 +51,35 @@ export interface SimState {
   mutate: (fn: (state: SimState) => void) => void;
 }
 
-function freshWorldAndAgents(): { world: World; agents: Record<string, Agent>; agentOrder: string[] } {
+function freshWorldAndAgents(configs: AgentConfig[]): {
+  world: World;
+  agents: Record<string, Agent>;
+  agentOrder: string[];
+} {
   const world = buildWorld();
-  const agentList = createInitialAgents(world);
+  const agentList = createAgentsFromConfigs(configs, world);
   const agents: Record<string, Agent> = {};
   for (const a of agentList) agents[a.id] = a;
   return { world, agents, agentOrder: agentList.map((a) => a.id) };
 }
 
+function freshLog(): LogEntry[] {
+  return [{ id: makeLogId(), tick: 0, text: 'The sandbox begins. No rules, no roles — just watch.', kind: 'system' }];
+}
+
 export const useSimStore = create<SimState>()(
   immer((set) => {
-    const { world, agents, agentOrder } = freshWorldAndAgents();
+    const initialConfigs = defaultAgentConfigs();
+    const { world, agents, agentOrder } = freshWorldAndAgents(initialConfigs);
 
     return {
       world,
       agents,
       agentOrder,
-      log: [
-        {
-          id: makeLogId(),
-          tick: 0,
-          text: 'The town wakes up.',
-          kind: 'system',
-        },
-      ],
+      agentConfigs: initialConfigs,
+      log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
-      settings: DEFAULT_SETTINGS,
+      settings: DEFAULT_CONNECTION_SETTINGS,
       connectionStatus: 'unknown',
       connectionError: null,
       availableModels: [],
@@ -72,6 +88,26 @@ export const useSimStore = create<SimState>()(
       setSettings: (partial) =>
         set((state) => {
           Object.assign(state.settings, partial);
+        }),
+
+      addAgentConfig: () =>
+        set((state) => {
+          state.agentConfigs.push({
+            id: makeAgentConfigId(),
+            label: `Agent ${state.agentConfigs.length + 1}`,
+            model: '',
+          });
+        }),
+
+      removeAgentConfig: (id) =>
+        set((state) => {
+          state.agentConfigs = state.agentConfigs.filter((c) => c.id !== id);
+        }),
+
+      updateAgentConfig: (id, partial) =>
+        set((state) => {
+          const cfg = state.agentConfigs.find((c) => c.id === id);
+          if (cfg) Object.assign(cfg, partial);
         }),
 
       setAvailableModels: (models) =>
@@ -113,11 +149,11 @@ export const useSimStore = create<SimState>()(
 
       reset: () =>
         set((state) => {
-          const fresh = freshWorldAndAgents();
+          const fresh = freshWorldAndAgents(state.agentConfigs);
           state.world = fresh.world;
           state.agents = fresh.agents;
           state.agentOrder = fresh.agentOrder;
-          state.log = [{ id: makeLogId(), tick: 0, text: 'The town wakes up.', kind: 'system' }];
+          state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;
         }),
@@ -130,14 +166,16 @@ export const useSimStore = create<SimState>()(
 export function serializeSnapshot(): {
   agents: Record<string, Agent>;
   agentOrder: string[];
+  agentConfigs: AgentConfig[];
   log: LogEntry[];
   clock: SimClock;
-  settings: OllamaSettings;
+  settings: ConnectionSettings;
 } {
   const s = useSimStore.getState();
   return {
     agents: s.agents,
     agentOrder: s.agentOrder,
+    agentConfigs: s.agentConfigs,
     log: s.log,
     clock: { ...s.clock, running: false },
     settings: s.settings,
@@ -147,13 +185,15 @@ export function serializeSnapshot(): {
 export function loadSnapshot(snapshot: {
   agents: Record<string, Agent>;
   agentOrder: string[];
+  agentConfigs: AgentConfig[];
   log: LogEntry[];
   clock: SimClock;
-  settings: OllamaSettings;
+  settings: ConnectionSettings;
 }): void {
   useSimStore.setState((state) => {
     state.agents = snapshot.agents;
     state.agentOrder = snapshot.agentOrder;
+    state.agentConfigs = snapshot.agentConfigs ?? state.agentConfigs;
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
     state.settings = snapshot.settings;
