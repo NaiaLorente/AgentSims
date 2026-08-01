@@ -11,7 +11,26 @@ export interface World {
   tiles: TileKind[][]; // [y][x] — kept for the renderer/pathfinding, everything is walkable
 }
 
-export type MemoryKind = 'move' | 'said' | 'heard' | 'thought' | 'made' | 'noticed' | 'system';
+/** A fixed place on the map — always known to every agent, not something discovered. */
+export type ZoneKind = 'house' | 'shop' | 'restaurant' | 'park';
+
+export interface Zone {
+  id: string;
+  kind: ZoneKind;
+  name: string;
+  bounds: { x: number; y: number; w: number; h: number }; // tile-space rectangle
+}
+
+export type MemoryKind =
+  | 'said'
+  | 'heard'
+  | 'thought'
+  | 'system'
+  | 'job' // took a role/title somewhere
+  | 'worked' // earned money at a job
+  | 'need' // satisfied hunger/energy/fun
+  | 'bought' // spent money on food
+  | 'relationship'; // how it feels about another agent changed
 
 export interface MemoryEvent {
   id: string;
@@ -27,32 +46,36 @@ export type AgentIntent =
   | { kind: 'go_to'; targetId: string }
   | { kind: 'talk_to'; targetId: string }
   | { kind: 'say'; message: string }
-  | { kind: 'create'; content: string; targetId?: string }
+  | { kind: 'satisfy_need'; need: 'energy' | 'fun' }
+  | { kind: 'buy_food' }
+  | { kind: 'take_job'; title: string }
+  | { kind: 'work' }
   | { kind: 'wait' };
 
-export interface WorldObjectAddition {
-  agentLabel: string;
-  content: string;
+/** A role or job title an agent has claimed for itself at a specific zone — entirely
+ *  self-declared, in its own words; nothing stops two agents from claiming the same one. */
+export interface AgentRole {
+  zoneId: string;
+  title: string;
   tick: number;
 }
 
-/**
- * Something present in the world — either left behind by an agent, or a raw
- * natural feature seeded at the start (`natural: true`). Its meaning is
- * whatever whoever interacts with it decides; the engine never interprets
- * it. Any nearby agent can add to it (via `create` with a `targetId`),
- * letting one thing accumulate contributions from many agents over time
- * instead of everything being a disconnected scatter of separate objects.
- */
-export interface WorldObject {
-  id: string;
-  natural: boolean;
-  creatorId: string | null;
-  creatorLabel: string | null;
-  pos: Vec2;
-  content: string;
-  tick: number;
-  additions: WorldObjectAddition[];
+/** One agent's own view of another — asymmetric on purpose (A can consider B a
+ *  friend without B feeling the same), and updated by the agent's own model, not
+ *  a fixed ladder the engine imposes. */
+export interface Relationship {
+  otherId: string;
+  otherLabel: string;
+  affinity: number; // -100..100
+  label: string; // free text, in the agent's own words
+  updatedTick: number;
+}
+
+export interface Needs {
+  hunger: number; // 0..100, 100 = fully satisfied
+  energy: number;
+  social: number;
+  fun: number;
 }
 
 /** What an agent should do once a `walking` path finishes. */
@@ -80,13 +103,17 @@ export interface Agent {
   activity: ActivityState;
   memory: MemoryEvent[];
   speech: SpeechBubble | null;
+  needs: Needs;
+  wallet: number;
+  roles: AgentRole[];
+  relationships: Record<string, Relationship>; // keyed by other agent's id
 }
 
 export interface LogEntry {
   id: string;
   tick: number;
   text: string;
-  kind: 'conversation' | 'creation' | 'system';
+  kind: 'conversation' | 'event' | 'system';
   speakerLabel?: string;
   /** Who this was said to, if anyone in particular (omitted for broadcast "say"). */
   listenerLabel?: string;

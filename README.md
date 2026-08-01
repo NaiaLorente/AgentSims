@@ -1,13 +1,15 @@
 # AgentSims
 
-A sandbox for watching what LLMs actually do when you give them total free
-will. Drop several AI agents — each powered by a model of your choice — into
-a shared open space with no personality, no needs, no goals, and no
-instructions. Watch where they go, whether they approach each other, what
-they say, and whether that differs from model to model. Everything runs in
-your browser; there's no backend and no API key. The "brains" are your own
-local LLMs, served by [Ollama](https://ollama.com), so it's completely free
-to run.
+A sandbox for watching what LLMs actually do when you give them a small town
+and total free will inside it. Drop several AI agents — each powered by a
+model of your choice — into a shared map with houses, a shop, a restaurant,
+and a park, and give them needs, money, jobs, and relationships to manage.
+Nothing is scripted or forced: what each agent actually does with any of it —
+whether it works, rests, befriends someone, declares itself the park's
+leader, or ignores all of it — is entirely up to its own model. Everything
+runs in your browser; there's no backend and no API key. The "brains" are
+your own local LLMs, served by [Ollama](https://ollama.com), so it's
+completely free to run.
 
 ## Quick start
 
@@ -70,81 +72,67 @@ Most browsers exempt `localhost`, but if yours doesn't:
 
 ## How it works
 
-- **World**: a deliberately open, featureless field rendered on an HTML
-  canvas — nothing suggesting what agents should do or where they should go.
-  Agents render as small animated characters (their own color, a walk cycle,
-  facing whichever way they're moving) rather than plain dots, natural
-  resources get a distinct hand-drawn icon each (a flickering flame, rippling
-  water, a log, a rock cluster), and agent-made things get a little monument
-  that visibly grows as more agents add to it. Scroll to zoom and drag to pan
-  around the scene; double-click resets the view. None of this changes what's
-  actually happening — it's the same underlying state, just something to
-  watch instead of only read.
-- **Agents**: each is just a model assignment (e.g. "Agent 1 → llama3.2") and
-  a position. No bio, no traits, no needs, no goals. You can add, remove, and
+- **The map**: five fixed places — two houses, a shop, a restaurant, and a
+  park — laid out on an open field, always known to every agent from the
+  start (like a real map, not something discovered by wandering close
+  enough). Agents render as small animated characters (their own color, a
+  walk cycle, facing whichever way they're moving); each place renders as a
+  labeled, tinted area you can walk into. Scroll to zoom and drag to pan
+  around the scene; double-click resets the view.
+- **Agents**: each is a model assignment (e.g. "A → llama3.2") plus a
+  position, needs, a wallet, and whatever roles/relationships it's picked up
+  along the way — no fixed bio or personality. You can add, remove, and
   reassign agents freely in the **Agents** panel — pick the same model twice
   to compare temperature/seed variance, or different models to compare how
   each one behaves.
+- **Needs**: hunger, energy, social, and fun, each decaying slowly over
+  time and visible in the **Agents** inspector. They're purely informational
+  — nothing forces an agent to act on a low need, and nothing bad happens if
+  it doesn't. Energy is restored by resting at a house, fun by spending time
+  at the park, hunger by buying food, and social by simply talking to people.
+- **Jobs & money**: an agent can claim a role or job title anywhere, in its
+  own words (a title it makes up, not picked from a list) — but only while
+  actually standing at that place, and nothing stops two agents from
+  claiming the same one. Holding a job at the shop or restaurant lets an
+  agent work there to earn money, which can then be spent on food. It's a
+  real, if small, economy — entirely opt-in.
+- **Politics, informally.** There's no election system or ranking — "leader
+  of the park," "shopkeeper," or anything else is just a role an agent
+  declares for itself the same way a job is claimed. Conflicting claims,
+  alliances, or rivalries aren't resolved by the engine; they only exist in
+  what the agents say and do about them. The **Zones** panel shows who's
+  claimed what, where, as a single across-the-map view.
 - **Decisions**: when an agent is free, its own assigned model is asked what
-  it wants to do — move in a direction, approach and talk to a specific
-  nearby agent, say something out loud to no one in particular, make
-  something (see below), or do nothing — via a minimal JSON action schema.
-  That schema is the only "instruction" involved; it describes what's
-  mechanically possible, not what the agent should want. The prompts never
-  mention AI, models, or "free will" as a concept — telling an agent what it
-  *is* just gets it talking about that instead of acting, so it's only ever
-  told what it can do, in-world, first person.
+  it wants to do — move, walk to a specific place, approach and talk to a
+  nearby agent, say something out loud, rest, have fun, buy food, claim a
+  role, work, or do nothing — via a minimal JSON action schema. That schema
+  is the only "instruction" involved; it describes what's mechanically
+  possible, not what the agent should want. The prompts never mention AI,
+  models, or "free will" as a concept — telling an agent what it *is* just
+  gets it talking about that instead of acting, so it's only ever told what
+  it can do, in-world, first person.
 - **Conversations are not scripted by one model.** Each line is generated
   turn-by-turn by the actual speaking agent's own model, alternating back
   and forth (up to 8 turns, or until either side chooses to end it) — so
   what you see is genuinely each model's own voice, not one model writing
   both sides.
+- **Relationships are remembered, not just implied by chat.** After any
+  exchange, the speaking agent's own model can optionally update how it
+  feels about the other person — a short label in its own words ("a close
+  friend", "someone I don't trust") plus a numeric affinity — stored on the
+  agent and visible in its inspector. It's deliberately asymmetric: one
+  agent can consider another a friend without that being mutual, and there's
+  no fixed ladder of relationship stages the engine imposes.
 - **Memory carries across encounters.** Every agent remembers what it's
-  said, heard, made, and who it's met, and that memory is fed back into both
-  its decisions and its next conversation with the same agent — so it won't
-  re-introduce itself from scratch every time it runs into someone it's
-  already spoken to.
-- **Making things**: an agent can leave anything at its current spot —
-  described however it wants, in its own words. The engine stores that
-  description as-is and never interprets it; it's just something other
-  agents can see nearby and react to, reference, or build on. This is the
-  only mechanism for anything resembling construction, writing, or shared
-  culture — nothing about what to build is ever suggested.
-- **Building on what's already there.** Instead of always making something
-  new, an agent can add to something already at its location — its own
-  earlier creation, someone else's, or a natural feature (below) — so one
-  thing can accumulate contributions from several agents over time into a
-  single evolving structure, rather than everything being a scatter of
-  disconnected objects.
-- **A few raw materials exist from the start**: water, fire, wood, and stone,
-  each seeded at a fixed spot somewhere on the map. They're never announced
-  — an agent only learns one exists by wandering close enough to notice it,
-  the same way it'd notice another agent or something someone built. Nothing
-  in the prompt says what they're for, or that they're significant at all.
-- **Returning to a place.** An agent can also head straight to somewhere it
-  remembers — its own id, recalled from memory — rather than only being able
-  to wander in a direction. Every place it's ever noticed or interacted with
-  is remembered this way, so it's possible to deliberately go back to
-  something built earlier instead of only rediscovering things by chance.
-  Ids are kept as plain short numbers (`1`, `2`, `3`...) rather than long
-  opaque tokens — smaller local models are far more reliable at copying a
-  short id back correctly than a long one, which matters for both `go_to`
-  and adding onto something that already exists.
-- **No duplicate pile-ups.** If an agent tries to add something to an object
-  that's word-for-word already there, the addition is skipped — it's told
-  what's already there instead, rather than the same line getting logged
-  twice. This doesn't judge or block *new* content, only exact repeats of
-  what's already on that same object.
-- **Full transcript**: every line anyone says, and everything anyone makes,
-  is logged live in the transcript panel and shown as an on-canvas speech
-  bubble as it happens — nothing is summarized or paraphrased. Simultaneous
-  conversations (normal once there are 3+ agents) each get their own live
-  card above the transcript so they don't blur into one thread, and the
-  **World** panel lists every object's full, untruncated content and
-  contribution history separately from the scrolling feed.
-- **No relationship system, no milestones, no scoring.** Whatever affinity,
-  conflict, or connection emerges is only visible in what the agents actually
-  say and do — there's no hidden state machine interpreting it for you.
+  said, heard, earned, bought, claimed, and who it's met, and that memory is
+  fed back into both its decisions and its next conversation with the same
+  agent — so it won't re-introduce itself from scratch every time it runs
+  into someone it's already spoken to.
+- **Full transcript**: everything said, and every role claimed, is logged
+  live in the transcript panel and shown as an on-canvas speech bubble as it
+  happens — nothing is summarized or paraphrased. Simultaneous conversations
+  (normal once there are 3+ agents) each get their own live card above the
+  transcript so they don't blur into one thread.
 
 Project layout: simulation logic lives in `src/sim/`, the Ollama client and
 prompts in `src/llm/`, app state (including the agent roster) in

@@ -1,5 +1,6 @@
 import { useSimStore } from '../state/simStore';
 import { recentMemories } from '../sim/memory';
+import type { Agent } from '../sim/types';
 
 function activityLabel(kind: string): string {
   switch (kind) {
@@ -14,6 +15,41 @@ function activityLabel(kind: string): string {
     default:
       return kind;
   }
+}
+
+const NEED_LABELS: Record<keyof Agent['needs'], string> = {
+  hunger: 'Hunger',
+  energy: 'Energy',
+  social: 'Social',
+  fun: 'Fun',
+};
+
+function needBarColor(value: number): string {
+  if (value >= 70) return '#22c55e';
+  if (value >= 40) return '#eab308';
+  return '#ef4444';
+}
+
+function NeedsBars({ needs }: { needs: Agent['needs'] }) {
+  return (
+    <div className="flex flex-col gap-1">
+      {(Object.keys(needs) as (keyof Agent['needs'])[]).map((key) => {
+        const value = needs[key];
+        return (
+          <div key={key} className="flex items-center gap-2 text-[11px]">
+            <span className="w-12 shrink-0 text-white/50">{NEED_LABELS[key]}</span>
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full transition-[width]"
+                style={{ width: `${Math.round(value)}%`, backgroundColor: needBarColor(value) }}
+              />
+            </div>
+            <span className="w-8 shrink-0 text-right text-white/40">{Math.round(value)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function AgentInspector() {
@@ -57,7 +93,45 @@ export function AgentInspector() {
             <p className="text-xs text-white/60">
               Model: <span className="text-white/80">{agent.model || '(none assigned)'}</span>
             </p>
-            <p className="mt-1 text-[11px] text-white/40">Currently: {activityLabel(agent.activity.kind)}</p>
+            <p className="mt-1 text-[11px] text-white/40">
+              Currently: {activityLabel(agent.activity.kind)} · ${agent.wallet}
+            </p>
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Status</h3>
+            <NeedsBars needs={agent.needs} />
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Roles</h3>
+            {agent.roles.length === 0 ? (
+              <p className="text-[11px] text-white/30">None claimed yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-0.5 text-[11px] text-white/60">
+                {agent.roles.map((r, i) => (
+                  <li key={i}>
+                    "{r.title}" <span className="text-white/30">at {r.zoneId}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Relationships</h3>
+            {Object.keys(agent.relationships).length === 0 ? (
+              <p className="text-[11px] text-white/30">Hasn't formed any yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-0.5 text-[11px] text-white/60">
+                {Object.values(agent.relationships).map((r) => (
+                  <li key={r.otherId}>
+                    <span className="text-white/80">{r.otherLabel}</span>: {r.label}{' '}
+                    <span className="text-white/30">(affinity {r.affinity})</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div>

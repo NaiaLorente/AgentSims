@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { ActiveConversation, Agent, LogEntry, SimClock, World, WorldObject } from '../sim/types';
+import type { ActiveConversation, Agent, LogEntry, SimClock, World, Zone } from '../sim/types';
 import { buildWorld } from '../sim/world';
-import { createNaturalFeatures } from '../sim/naturalFeatures';
-import { agentIdCounter, objectIdCounter } from '../sim/ids';
+import { createZones } from '../sim/zones';
+import { agentIdCounter } from '../sim/ids';
 import {
   type AgentConfig,
   createAgentFromConfig,
@@ -36,7 +36,8 @@ export interface SimState {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
-  worldObjects: WorldObject[];
+  /** Fixed places on the map — static, not something agents create or discover. */
+  zones: Zone[];
   /** Conversations currently in flight, keyed by id — transient, not persisted across save/load. */
   activeConversations: Record<string, ActiveConversation>;
   log: LogEntry[];
@@ -89,7 +90,7 @@ export const useSimStore = create<SimState>()(
       agents,
       agentOrder,
       agentConfigs: initialConfigs,
-      worldObjects: createNaturalFeatures(),
+      zones: createZones(),
       activeConversations: {},
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
@@ -182,8 +183,7 @@ export const useSimStore = create<SimState>()(
           state.world = fresh.world;
           state.agents = fresh.agents;
           state.agentOrder = fresh.agentOrder;
-          objectIdCounter.reset();
-          state.worldObjects = createNaturalFeatures();
+          state.zones = createZones();
           state.activeConversations = {};
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
@@ -199,7 +199,6 @@ export function serializeSnapshot(): {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
-  worldObjects: WorldObject[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -209,7 +208,6 @@ export function serializeSnapshot(): {
     agents: s.agents,
     agentOrder: s.agentOrder,
     agentConfigs: s.agentConfigs,
-    worldObjects: s.worldObjects,
     log: s.log,
     clock: { ...s.clock, running: false },
     settings: s.settings,
@@ -220,21 +218,18 @@ export function loadSnapshot(snapshot: {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
-  worldObjects?: WorldObject[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
 }): void {
-  // A loaded save brings its own ids in from outside this session's counters — bump them past
-  // whatever's in the save so a freshly-created object/agent afterward can't collide.
-  objectIdCounter.ensureAbove((snapshot.worldObjects ?? []).map((o) => o.id));
+  // A loaded save brings its own agent ids in from outside this session's counter — bump it
+  // past whatever's in the save so a freshly-added agent afterward can't collide.
   agentIdCounter.ensureAbove((snapshot.agentConfigs ?? []).map((c) => c.id));
 
   useSimStore.setState((state) => {
     state.agents = snapshot.agents;
     state.agentOrder = snapshot.agentOrder;
     state.agentConfigs = snapshot.agentConfigs ?? state.agentConfigs;
-    state.worldObjects = snapshot.worldObjects ?? [];
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
     state.settings = snapshot.settings;

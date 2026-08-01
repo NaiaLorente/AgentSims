@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSimStore } from '../state/simStore';
-import type { Agent, World, WorldObject } from '../sim/types';
+import type { Agent, World, Zone, ZoneKind } from '../sim/types';
 
 const TILE = 32;
 const MIN_SCALE = 0.6;
@@ -283,139 +283,49 @@ function shade(hex: string, percent: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// World object icons — a distinct little pictogram per known natural material,
-// and a "monument" for agent-made things that visibly grows as more agents
-// contribute to it. The engine still never interprets `content` itself; this
-// is purely how the same string looks at a glance vs. having to read it.
+// Zones — fixed places on the map, each rendered as a labeled tinted area
+// rather than a single point, since (unlike the old objects) they cover
+// ground an agent actually stands inside of.
 // ---------------------------------------------------------------------------
 
-function drawWaterIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, t: number) {
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = '#1d6fa5';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(220,245,255,0.75)';
-  ctx.lineWidth = 1.4;
-  for (let i = -1; i <= 1; i++) {
-    ctx.beginPath();
-    const yy = cy + i * r * 0.4;
-    ctx.moveTo(cx - r * 0.6, yy);
-    for (let px = -0.6; px <= 0.6; px += 0.2) {
-      ctx.lineTo(cx + px * r, yy + Math.sin(t * 2 + px * 6 + i) * 1.5);
-    }
-    ctx.stroke();
-  }
-}
-
-function drawFireIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, t: number) {
-  const flick = Math.sin(t * 8) * 1.2;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy + r);
-  ctx.quadraticCurveTo(cx - r * 0.9, cy + r * 0.2, cx - r * 0.35, cy - r * 0.3 + flick);
-  ctx.quadraticCurveTo(cx - r * 0.1, cy - r * 0.6, cx, cy - r * 1.1 + flick);
-  ctx.quadraticCurveTo(cx + r * 0.15, cy - r * 0.5, cx + r * 0.4, cy - r * 0.2 - flick);
-  ctx.quadraticCurveTo(cx + r * 0.9, cy + r * 0.2, cx, cy + r);
-  ctx.closePath();
-  const grad = ctx.createLinearGradient(cx, cy - r, cx, cy + r);
-  grad.addColorStop(0, '#fde047');
-  grad.addColorStop(0.6, '#f97316');
-  grad.addColorStop(1, '#b91c1c');
-  ctx.fillStyle = grad;
-  ctx.fill();
-}
-
-function drawWoodIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(-0.35);
-  roundRect(ctx, -r * 1.1, -r * 0.45, r * 2.2, r * 0.9, r * 0.4);
-  ctx.fillStyle = '#7c4a1e';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.ellipse(r * 0.95, 0, r * 0.28, r * 0.4, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#a8703a';
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(r * 0.95, 0, r * 0.14, r * 0.2, 0, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawStoneIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
-  ctx.beginPath();
-  ctx.moveTo(cx - r, cy + r * 0.5);
-  ctx.lineTo(cx - r * 0.5, cy - r * 0.7);
-  ctx.lineTo(cx + r * 0.2, cy - r);
-  ctx.lineTo(cx + r, cy - r * 0.2);
-  ctx.lineTo(cx + r * 0.8, cy + r * 0.6);
-  ctx.lineTo(cx - r * 0.2, cy + r * 0.8);
-  ctx.closePath();
-  ctx.fillStyle = '#8b93a1';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(cx - r * 0.4, cy - r * 0.3);
-  ctx.lineTo(cx + r * 0.3, cy - r * 0.6);
-  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.stroke();
-}
-
-function drawMonumentIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string, layers: number) {
-  const n = Math.max(1, Math.min(5, layers));
-  for (let i = 0; i < n; i++) {
-    const w = r * 1.7 * (1 - i * 0.16);
-    const h = r * 0.5;
-    const y = cy + r * 0.7 - i * (h * 0.75);
-    roundRect(ctx, cx - w / 2, y - h, w, h, 3);
-    ctx.fillStyle = i === n - 1 ? color : shade(color, -12 * i);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
-}
-
-const NATURAL_ICONS: Record<string, (ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, t: number) => void> = {
-  water: (ctx, cx, cy, r, t) => drawWaterIcon(ctx, cx, cy, r, t),
-  fire: (ctx, cx, cy, r, t) => drawFireIcon(ctx, cx, cy, r, t),
-  wood: (ctx, cx, cy, r) => drawWoodIcon(ctx, cx, cy, r),
-  stone: (ctx, cx, cy, r) => drawStoneIcon(ctx, cx, cy, r),
+const ZONE_COLOR: Record<ZoneKind, string> = {
+  house: '#c2793a',
+  shop: '#3b82f6',
+  restaurant: '#ef4444',
+  park: '#22c55e',
 };
 
-function drawObject(ctx: CanvasRenderingContext2D, obj: WorldObject, creatorColor: string, t: number) {
-  const cx = obj.pos.x * TILE + TILE / 2;
-  const cy = obj.pos.y * TILE + TILE / 2;
-  const r = TILE * 0.28;
+const ZONE_ICON: Record<ZoneKind, string> = {
+  house: '🏠',
+  shop: '🛒',
+  restaurant: '🍽️',
+  park: '🌳',
+};
 
-  const icon = obj.natural ? NATURAL_ICONS[obj.content] : undefined;
-  if (icon) {
-    icon(ctx, cx, cy, r, t);
-  } else if (obj.natural) {
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#94a3b8';
-    ctx.fill();
-  } else {
-    drawMonumentIcon(ctx, cx, cy, r, creatorColor, 1 + obj.additions.length);
-  }
+function drawZone(ctx: CanvasRenderingContext2D, zone: Zone) {
+  const x = zone.bounds.x * TILE;
+  const y = zone.bounds.y * TILE;
+  const w = zone.bounds.w * TILE;
+  const h = zone.bounds.h * TILE;
+  const color = ZONE_COLOR[zone.kind];
 
-  const suffix = obj.additions.length > 0 ? ` (+${obj.additions.length})` : '';
-  const base = obj.content.length > 22 ? `${obj.content.slice(0, 22)}…` : obj.content;
-  const caption = `${base}${suffix}`;
-  ctx.font = '10px system-ui';
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fillStyle = `${color}33`;
+  ctx.fill();
+  ctx.strokeStyle = `${color}aa`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = '16px system-ui';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(255,255,255,0.65)';
-  ctx.fillText(caption, cx, cy + r + 10);
+  ctx.fillText(ZONE_ICON[zone.kind], x + w / 2, y + h / 2 - 4);
+
+  ctx.font = '10px system-ui';
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText(zone.name, x + w / 2, y + h / 2 + 14);
 }
 
 function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string) {
@@ -492,9 +402,8 @@ export function CanvasWorld() {
 
       drawGround(ctx, state.world, t);
 
-      const colorFor = (id: string | null) => (id && state.agents[id]?.model ? state.agents[id].color : '#34d399');
-      for (const obj of state.worldObjects) {
-        drawObject(ctx, obj, colorFor(obj.creatorId), t);
+      for (const zone of state.zones) {
+        drawZone(ctx, zone);
       }
 
       const targets = agentTargets(state.agentOrder, state.agents);

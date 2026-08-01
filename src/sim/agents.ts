@@ -46,7 +46,11 @@ export function colorForId(id: string): string {
   return COLOR_PALETTE[hash % COLOR_PALETTE.length];
 }
 
-/** Builds one live, running agent from a config. No persona, no needs. */
+const STARTING_NEED = 70;
+const STARTING_WALLET = 20;
+
+/** Builds one live, running agent from a config. No persona, no fixed goals — needs, wallet,
+ *  roles and relationships are all just state the agent can act on (or ignore) as it chooses. */
 export function createAgentFromConfig(config: AgentConfig, world: World, index: number): Agent {
   return {
     id: config.id,
@@ -58,6 +62,10 @@ export function createAgentFromConfig(config: AgentConfig, world: World, index: 
     activity: { kind: 'idle', cooldownUntilTick: 0 },
     memory: [],
     speech: null,
+    needs: { hunger: STARTING_NEED, energy: STARTING_NEED, social: STARTING_NEED, fun: STARTING_NEED },
+    wallet: STARTING_WALLET,
+    roles: [],
+    relationships: {},
   };
 }
 

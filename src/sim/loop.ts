@@ -1,8 +1,9 @@
 import { useSimStore, makeLogId, type SimState } from '../state/simStore';
-import type { Agent, Direction, LogEntry, Vec2, WalkGoal, WorldObject } from './types';
+import type { Agent, Direction, LogEntry, Vec2, WalkGoal } from './types';
 import { findPath } from './pathfinding';
 import { randomTile } from './world';
 import { addMemory } from './memory';
+import { zoneAt, zoneCenter } from './zones';
 import {
   buildConversationTurnPrompt,
   buildPlannerPrompt,
@@ -16,24 +17,21 @@ import {
   type TranscriptLine,
 } from '../llm/prompts';
 import { chatJSON, type OllamaSettings } from '../llm/ollamaClient';
-import { objectIdCounter } from './ids';
 
 const NEARBY_RADIUS = 6;
 const TALK_TRIGGER_RADIUS = 1;
 const IDLE_COOLDOWN_TICKS = 2;
 const MOVE_STEP = 5;
 const MAX_CONVERSATION_TURNS = 8;
-const MAX_WORLD_OBJECTS = 200;
 const MAX_LOG_ENTRIES = 500;
 
-function makeWorldObjectId(): string {
-  return objectIdCounter.next();
-}
-
-/** Cheap literal-match dedup — not interpreting meaning, just catching exact repeats. */
-function normalizeContent(text: string): string {
-  return text.trim().toLowerCase().replace(/\s+/g, ' ');
-}
+const NEED_DECAY_PER_TICK = { hunger: 0.3, energy: 0.25, social: 0.15, fun: 0.2 };
+const REST_RESTORE = 25;
+const FUN_RESTORE = 25;
+const FOOD_PRICE = 3;
+const FOOD_RESTORE = 25;
+const WORK_PAY = 4;
+const SOCIAL_PER_TURN = 3;
 
 let conversationCounter = 0;
 function makeConversationId(): string {
@@ -43,6 +41,10 @@ function makeConversationId(): string {
 
 function chebyshev(a: Vec2, b: Vec2): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+function clamp100(v: number): number {
+  return Math.max(0, Math.min(100, v));
 }
 
 function agentSettings(globalSettings: SimState['settings'], agent: Agent): OllamaSettings {
@@ -55,6 +57,17 @@ function pushLogEntry(state: SimState, entry: Omit<LogEntry, 'id'>): void {
   if (state.log.length > MAX_LOG_ENTRIES) {
     state.log.splice(0, state.log.length - MAX_LOG_ENTRIES);
   }
+}
+
+function decayNeeds(agent: Agent): void {
+  agent.needs.hunger = clamp100(agent.needs.hunger - NEED_DECAY_PER_TICK.hunger);
+  agent.needs.energy = clamp100(agent.needs.energy - NEED_DECAY_PER_TICK.energy);
+  agent.needs.social = clamp100(agent.needs.social - NEED_DECAY_PER_TICK.social);
+  agent.needs.fun = clamp100(agent.needs.fun - NEED_DECAY_PER_TICK.fun);
+}
+
+function boostSocial(agent: Agent, amount: number): void {
+  agent.needs.social = clamp100(agent.needs.social + amount);
 }
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
@@ -96,6 +109,7 @@ async function runTick(): Promise<void> {
     for (const id of state.agentOrder) {
       const agent = state.agents[id];
       if (!agent) continue;
+      decayNeeds(agent);
       stepAgent(state, agent, tick, pendingConversations);
     }
   });
@@ -175,10 +189,6 @@ function destinationForDirection(world: SimState['world'], from: Vec2, direction
   };
 }
 
-function describeObjectForMemory(o: WorldObject): string {
-  return o.natural ? o.content : `${o.creatorLabel}'s "${o.content}"`;
-}
-
 async function requestPlan(agentId: string): Promise<void> {
   const state0 = useSimStore.getState();
   const agent = state0.agents[agentId];
@@ -187,32 +197,16 @@ async function requestPlan(agentId: string): Promise<void> {
   const nearby = state0.agentOrder
     .map((id) => state0.agents[id])
     .filter((o): o is Agent => !!o && o.id !== agentId && chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
-  const nearbyObjects = state0.worldObjects.filter((o) => chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
 
-  // Note anything newly perceived so it can be recalled and returned to later, even if the
-  // agent doesn't interact with it right now — otherwise only things it acts on are ever
-  // remembered, and a place walked past but not touched would be lost the moment it's out of range.
-  const newlyNoticed = nearbyObjects.filter((o) => !agent.memory.some((m) => m.text.includes(o.id)));
-  if (newlyNoticed.length > 0) {
-    useSimStore.getState().mutate((state) => {
-      const a = state.agents[agentId];
-      if (!a) return;
-      for (const o of newlyNoticed) {
-        addMemory(a, state.clock.tick, 'noticed', `Noticed ${describeObjectForMemory(o)} nearby (id: "${o.id}")`);
-      }
-    });
-  }
-  const agentForPrompt = newlyNoticed.length > 0 ? (useSimStore.getState().agents[agentId] ?? agent) : agent;
-
-  const { system, user } = buildPlannerPrompt(agentForPrompt, nearby, nearbyObjects);
+  const { system, user } = buildPlannerPrompt(agent, nearby, state0.zones);
   const resp = await chatJSON<PlannerResponse>(
     agentSettings(state0.settings, agent),
     { system, user, schema: PLANNER_SCHEMA },
     fallbackPlannerResponse(),
   );
   const validTargets = new Set(nearby.map((o) => o.id));
-  const validObjects = new Set(nearbyObjects.map((o) => o.id));
-  const intent = parseIntent(resp, validTargets, validObjects);
+  const validZones = new Set(state0.zones.map((z) => z.id));
+  const intent = parseIntent(resp, validTargets, validZones);
 
   useSimStore.getState().mutate((state) => {
     const a = state.agents[agentId];
@@ -236,12 +230,12 @@ async function requestPlan(agentId: string): Promise<void> {
         break;
       }
       case 'go_to': {
-        const place = state.worldObjects.find((o) => o.id === intent.targetId);
-        if (!place) {
+        const zone = state.zones.find((z) => z.id === intent.targetId);
+        if (!zone) {
           a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
           break;
         }
-        const path = findPath(state.world, a.pos, place.pos);
+        const path = findPath(state.world, a.pos, zoneCenter(zone));
         if (path.length === 0) {
           a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         } else {
@@ -264,63 +258,91 @@ async function requestPlan(agentId: string): Promise<void> {
         if (intent.message) {
           a.speech = { text: intent.message.slice(0, 200), expiresAtTick: now + 4 };
           addMemory(a, now, 'said', `You said: "${intent.message}"`);
+          boostSocial(a, 1);
           pushLogEntry(state, { tick: now, text: intent.message, kind: 'conversation', speakerLabel: a.label });
           for (const otherId of state.agentOrder) {
             if (otherId === agentId) continue;
             const other = state.agents[otherId];
             if (other && chebyshev(other.pos, a.pos) <= NEARBY_RADIUS) {
               addMemory(other, now, 'heard', `${a.label} said: "${intent.message}"`);
+              boostSocial(other, 1);
             }
           }
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
       }
-      case 'create': {
-        if (intent.content) {
-          const existing = intent.targetId ? state.worldObjects.find((o) => o.id === intent.targetId) : undefined;
-          const normalized = normalizeContent(intent.content);
-          const alreadyThere =
-            existing &&
-            (normalizeContent(existing.content) === normalized ||
-              existing.additions.some((add) => normalizeContent(add.content) === normalized));
-
-          if (existing && alreadyThere) {
-            addMemory(
-              a,
-              now,
-              'noticed',
-              `"${intent.content}" is already there on "${existing.content}" (id: "${existing.id}") — no need to add it again.`,
-            );
-          } else if (existing) {
-            existing.additions.push({ agentLabel: a.label, content: intent.content, tick: now });
-            addMemory(a, now, 'made', `You added to "${existing.content}": "${intent.content}" (id: "${existing.id}")`);
+      case 'satisfy_need': {
+        const zone = zoneAt(state.zones, a.pos);
+        const fits =
+          (intent.need === 'energy' && zone?.kind === 'house') || (intent.need === 'fun' && zone?.kind === 'park');
+        if (fits && zone) {
+          const restore = intent.need === 'energy' ? REST_RESTORE : FUN_RESTORE;
+          a.needs[intent.need] = clamp100(a.needs[intent.need] + restore);
+          addMemory(
+            a,
+            now,
+            'need',
+            intent.need === 'energy'
+              ? `You rested at ${zone.name}, restoring energy.`
+              : `You had fun at ${zone.name}.`,
+          );
+        } else {
+          addMemory(
+            a,
+            now,
+            'need',
+            `You tried to ${intent.need === 'energy' ? 'rest' : 'have fun'}, but there's nowhere suited for that here.`,
+          );
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'buy_food': {
+        const zone = zoneAt(state.zones, a.pos);
+        const sells = zone?.kind === 'shop' || zone?.kind === 'restaurant';
+        if (sells && zone && a.wallet >= FOOD_PRICE) {
+          a.wallet -= FOOD_PRICE;
+          a.needs.hunger = clamp100(a.needs.hunger + FOOD_RESTORE);
+          addMemory(a, now, 'bought', `You bought food at ${zone.name} for $${FOOD_PRICE}.`);
+        } else if (sells) {
+          addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.`);
+        } else {
+          addMemory(a, now, 'bought', `You tried to buy food, but there's nowhere selling it here.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'take_job': {
+        const zone = zoneAt(state.zones, a.pos);
+        if (zone) {
+          const already = a.roles.some((r) => r.zoneId === zone.id && r.title === intent.title);
+          if (!already) {
+            a.roles.push({ zoneId: zone.id, title: intent.title, tick: now });
+            addMemory(a, now, 'job', `You claimed the role "${intent.title}" at ${zone.name}.`);
             pushLogEntry(state, {
               tick: now,
-              text: `${a.label} added to "${existing.content}": "${intent.content}"`,
-              kind: 'creation',
+              text: `${a.label} claimed the role "${intent.title}" at ${zone.name}`,
+              kind: 'event',
             });
-          } else {
-            const obj: WorldObject = {
-              id: makeWorldObjectId(),
-              natural: false,
-              creatorId: a.id,
-              creatorLabel: a.label,
-              pos: { ...a.pos },
-              content: intent.content,
-              tick: now,
-              additions: [],
-            };
-            state.worldObjects.push(obj);
-            const agentMade = state.worldObjects.filter((o) => !o.natural);
-            if (agentMade.length > MAX_WORLD_OBJECTS) {
-              const overflow = agentMade.length - MAX_WORLD_OBJECTS;
-              const toRemove = new Set(agentMade.slice(0, overflow).map((o) => o.id));
-              state.worldObjects = state.worldObjects.filter((o) => !toRemove.has(o.id));
-            }
-            addMemory(a, now, 'made', `You left: "${intent.content}" (id: "${obj.id}")`);
-            pushLogEntry(state, { tick: now, text: `${a.label} made: "${intent.content}"`, kind: 'creation' });
           }
+        } else {
+          addMemory(a, now, 'job', `You tried to claim a role, but there's nowhere here to claim it at.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'work': {
+        const zone = zoneAt(state.zones, a.pos);
+        const canWork = zone && (zone.kind === 'shop' || zone.kind === 'restaurant');
+        const hasRole = zone ? a.roles.some((r) => r.zoneId === zone.id) : false;
+        if (canWork && hasRole && zone) {
+          a.wallet += WORK_PAY;
+          addMemory(a, now, 'worked', `You worked at ${zone.name}, earning $${WORK_PAY}.`);
+        } else if (canWork) {
+          addMemory(a, now, 'worked', `You tried to work here, but you don't have a role at this place.`);
+        } else {
+          addMemory(a, now, 'worked', `You tried to work, but there's no job to do here.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
@@ -330,6 +352,18 @@ async function requestPlan(agentId: string): Promise<void> {
         break;
     }
   });
+}
+
+function applyRelationshipUpdate(agent: Agent, other: Agent, resp: ConversationTurnResponse, tick: number): void {
+  if (resp.affinityDelta === undefined && !resp.relationshipLabel) return;
+  const existing = agent.relationships[other.id];
+  const affinity = Math.max(
+    -100,
+    Math.min(100, (existing?.affinity ?? 0) + (typeof resp.affinityDelta === 'number' ? resp.affinityDelta : 0)),
+  );
+  const label = resp.relationshipLabel?.trim() || existing?.label || 'a stranger';
+  agent.relationships[other.id] = { otherId: other.id, otherLabel: other.label, affinity, label, updatedTick: tick };
+  addMemory(agent, tick, 'relationship', `You now think of ${other.label} as: "${label}" (affinity ${affinity}).`);
 }
 
 async function runConversation(aId: string, bId: string): Promise<void> {
@@ -377,8 +411,12 @@ async function runConversation(aId: string, bId: string): Promise<void> {
         if (sp) {
           sp.speech = { text: message.slice(0, 200), expiresAtTick: now + 4 };
           addMemory(sp, now, 'said', `You said to ${listener.label}: "${message}"`);
+          boostSocial(sp, SOCIAL_PER_TURN);
         }
-        if (li) addMemory(li, now, 'heard', `${speaker.label} said to you: "${message}"`);
+        if (li) {
+          addMemory(li, now, 'heard', `${speaker.label} said to you: "${message}"`);
+          boostSocial(li, SOCIAL_PER_TURN);
+        }
         pushLogEntry(state, {
           tick: now,
           text: message,
@@ -387,6 +425,7 @@ async function runConversation(aId: string, bId: string): Promise<void> {
           listenerLabel: listener.label,
         });
         state.activeConversations[conversationId]?.lines.push({ speakerLabel: speaker.label, text: message, tick: now });
+        if (sp && li) applyRelationshipUpdate(sp, li, resp, now);
       });
     }
 

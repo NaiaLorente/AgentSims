@@ -4,7 +4,7 @@ import { Controls } from './ui/Controls';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { AgentInspector } from './ui/AgentInspector';
 import { EventLog } from './ui/EventLog';
-import { WorldPanel } from './ui/WorldPanel';
+import { ZonesPanel } from './ui/ZonesPanel';
 import { LiveConversations } from './ui/LiveConversations';
 import { startLoopWatcher } from './sim/loop';
 
@@ -18,8 +18,8 @@ export default function App() {
       <header>
         <h1 className="text-xl font-semibold">AgentSims</h1>
         <p className="text-xs text-white/50">
-          Several LLMs dropped into a shared space with total free will — no personality, no goals, no rules.
-          Watch what each model actually does.
+          Several LLMs dropped into a shared town — houses, a shop, a restaurant, a park — with needs, jobs, and
+          relationships to manage, but total free will over what to actually do about any of it.
         </p>
       </header>
 
@@ -39,7 +39,7 @@ export default function App() {
         <div className="flex flex-col gap-3">
           <SettingsPanel />
           <AgentInspector />
-          <WorldPanel />
+          <ZonesPanel />
         </div>
       </div>
     </div>
