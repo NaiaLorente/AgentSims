@@ -70,8 +70,16 @@ Most browsers exempt `localhost`, but if yours doesn't:
 
 ## How it works
 
-- **World**: a deliberately blank, featureless grid rendered on an HTML
+- **World**: a deliberately open, featureless field rendered on an HTML
   canvas — nothing suggesting what agents should do or where they should go.
+  Agents render as small animated characters (their own color, a walk cycle,
+  facing whichever way they're moving) rather than plain dots, natural
+  resources get a distinct hand-drawn icon each (a flickering flame, rippling
+  water, a log, a rock cluster), and agent-made things get a little monument
+  that visibly grows as more agents add to it. Scroll to zoom and drag to pan
+  around the scene; double-click resets the view. None of this changes what's
+  actually happening — it's the same underlying state, just something to
+  watch instead of only read.
 - **Agents**: each is just a model assignment (e.g. "Agent 1 → llama3.2") and
   a position. No bio, no traits, no needs, no goals. You can add, remove, and
   reassign agents freely in the **Agents** panel — pick the same model twice
