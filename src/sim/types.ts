@@ -11,7 +11,7 @@ export interface World {
   tiles: TileKind[][]; // [y][x] — kept for the renderer/pathfinding, everything is walkable
 }
 
-export type MemoryKind = 'move' | 'said' | 'heard' | 'thought' | 'system';
+export type MemoryKind = 'move' | 'said' | 'heard' | 'thought' | 'made' | 'noticed' | 'system';
 
 export interface MemoryEvent {
   id: string;
@@ -26,7 +26,18 @@ export type AgentIntent =
   | { kind: 'move'; direction: Direction }
   | { kind: 'talk_to'; targetId: string }
   | { kind: 'say'; message: string }
+  | { kind: 'create'; content: string }
   | { kind: 'wait' };
+
+/** Something an agent left behind — its meaning is whatever the agent said it is; the engine never interprets it. */
+export interface WorldObject {
+  id: string;
+  creatorId: string;
+  creatorLabel: string;
+  pos: Vec2;
+  content: string;
+  tick: number;
+}
 
 /** What an agent should do once a `walking` path finishes. */
 export type WalkGoal = { kind: 'wander' } | { kind: 'talk'; targetId: string };
@@ -59,7 +70,7 @@ export interface LogEntry {
   id: string;
   tick: number;
   text: string;
-  kind: 'conversation' | 'system';
+  kind: 'conversation' | 'creation' | 'system';
   speakerLabel?: string;
 }
 

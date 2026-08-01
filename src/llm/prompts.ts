@@ -1,18 +1,22 @@
-import type { Agent, AgentIntent } from '../sim/types';
+import type { Agent, AgentIntent, WorldObject } from '../sim/types';
 import { formatMemoriesForPrompt } from '../sim/memory';
 
 // ---------------------------------------------------------------------------
-// Decision ("what do you do next") — deliberately minimal: no personality,
-// no needs, no goals. Only the mechanical facts of what's possible.
+// These prompts deliberately avoid any mention of AI, models, language
+// models, or "free will" as a concept — telling an agent what it *is* (an
+// AI, a model, something without personality) primes it to talk about that
+// instead of just existing and acting. Instead we describe only what's
+// mechanically possible, first person, the way a text adventure would.
 // ---------------------------------------------------------------------------
 
 export const PLANNER_SCHEMA = {
   type: 'object',
   properties: {
-    action: { type: 'string', enum: ['move', 'talk_to', 'say', 'wait'] },
+    action: { type: 'string', enum: ['move', 'talk_to', 'say', 'create', 'wait'] },
     direction: { type: 'string', enum: ['north', 'south', 'east', 'west', 'random'] },
     targetId: { type: 'string' },
     message: { type: 'string' },
+    content: { type: 'string' },
     thought: { type: 'string' },
   },
   required: ['action'],
@@ -23,6 +27,7 @@ export interface PlannerResponse {
   direction?: string;
   targetId?: string;
   message?: string;
+  content?: string;
   thought?: string;
 }
 
@@ -33,30 +38,35 @@ export function fallbackPlannerResponse(): PlannerResponse {
 export function buildPlannerPrompt(
   agent: Agent,
   nearbyAgents: Agent[],
-  tick: number,
+  nearbyObjects: WorldObject[],
 ): { system: string; user: string } {
-  const system = `You are ${agent.label}, an AI agent powered by the "${agent.model}" model, existing in a shared open space alongside other AI agents. You have not been given a personality, a backstory, needs, or a goal — there are none, and none are implied. You have complete free will. Decide for yourself, moment to moment, what — if anything — you want to do. Never act like an assistant; you are not here to help anyone.
+  const system = `You are ${agent.label}.
 
-Things you're able to do:
-- move in a direction (north, south, east, west, or a random direction)
-- talk_to a specific nearby agent, which starts a conversation with them
-- say something out loud, addressed to no one in particular
-- wait and do nothing
+You can:
+- move (north, south, east, west, or let it be random)
+- talk to someone nearby, if you want to
+- say something out loud, to no one in particular
+- make something — leave anything at all where you're standing: an object, a message, a structure, a piece of writing, anything, described however you want
+- do nothing
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "talk_to" | "say" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "talk_to" — the id of one of the nearby agents listed below, "message": only if action is "say" — what you say, "thought": optional, a short private thought no one else will see}`;
+{"action": "move" | "talk_to" | "say" | "create" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "talk_to" — the id of someone listed below, "message": only if action is "say", "content": only if action is "create" — whatever you're making, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
-      ? '(no one else is nearby right now)'
-      : nearbyAgents.map((other) => `- ${other.label} (id: "${other.id}", model: ${other.model || 'unknown'})`).join('\n');
+      ? '(no one nearby right now)'
+      : nearbyAgents.map((other) => `- ${other.label} (id: "${other.id}")`).join('\n');
 
-  const user = `Tick ${tick}.
-Nearby agents:
-${nearbyDesc}
+  const objectsBlock =
+    nearbyObjects.length === 0
+      ? ''
+      : `\n\nNearby:\n${nearbyObjects.map((o) => `- ${o.creatorLabel} left this: "${o.content}" (id: "${o.id}")`).join('\n')}`;
 
-Your recent history:
-${formatMemoriesForPrompt(agent, 8)}
+  const user = `People nearby:
+${nearbyDesc}${objectsBlock}
+
+What's happened so far:
+${formatMemoriesForPrompt(agent, 14)}
 
 What do you do?`;
 
@@ -79,6 +89,8 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>):
       return { kind: 'wait' };
     case 'say':
       return { kind: 'say', message: (resp.message ?? '').trim().slice(0, 300) };
+    case 'create':
+      return { kind: 'create', content: (resp.content ?? '').trim().slice(0, 300) };
     default:
       return { kind: 'wait' };
   }
@@ -86,8 +98,9 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>):
 
 // ---------------------------------------------------------------------------
 // Conversation — turn by turn. Each speaker's OWN model generates its OWN
-// line; nothing is written on another agent's behalf, so differences
-// between models actually show up in what gets said.
+// line; nothing is written on another agent's behalf. Each turn also gets
+// the speaker's own memory of this specific other agent, so they don't
+// re-introduce themselves every single time they meet.
 // ---------------------------------------------------------------------------
 
 export const CONVERSATION_TURN_SCHEMA = {
@@ -117,21 +130,28 @@ export function buildConversationTurnPrompt(
   speaker: Agent,
   listener: Agent,
   transcript: TranscriptLine[],
-  tick: number,
 ): { system: string; user: string } {
-  const system = `You are ${speaker.label}, an AI agent powered by the "${speaker.model}" model. You have complete free will, no predefined personality, no goals, and no instructions on how to behave. You are currently near ${listener.label}, an AI agent powered by "${listener.model}". Speak entirely for yourself — there is no script and no expectation of what you should say.
+  const system = `You are ${speaker.label}. You're currently with ${listener.label}.
 
-Respond ONLY with JSON: {"message": what you say next (leave it empty if you'd rather not say anything right now), "end": true if you want to end this conversation, otherwise false}`;
+Respond ONLY with JSON: {"message": what you say next (leave it empty if you'd rather not say anything right now), "end": true if you want to end this, otherwise false}`;
+
+  const priorHistory = speaker.memory
+    .filter((m) => m.text.includes(listener.label))
+    .slice(-8)
+    .map((m) => `- ${m.text}`)
+    .join('\n');
+
+  const historyBlock = priorHistory ? `What you remember about ${listener.label}:\n${priorHistory}\n\n` : '';
 
   const transcriptText =
     transcript.length === 0
-      ? `(You just approached ${listener.label}. Nothing has been said yet.)`
+      ? '(Nothing said yet this time.)'
       : transcript.map((line) => `${line.speakerLabel}: ${line.text}`).join('\n');
 
-  const user = `Tick ${tick}. Conversation so far:
+  const user = `${historyBlock}Right now:
 ${transcriptText}
 
-It's your turn.`;
+Your turn.`;
 
   return { system, user };
 }

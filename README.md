@@ -79,18 +79,32 @@ Most browsers exempt `localhost`, but if yours doesn't:
   each one behaves.
 - **Decisions**: when an agent is free, its own assigned model is asked what
   it wants to do — move in a direction, approach and talk to a specific
-  nearby agent, say something out loud to no one in particular, or do
-  nothing — via a minimal JSON action schema. That schema is the only
-  "instruction" involved; it describes what's mechanically possible, not
-  what the agent should want.
+  nearby agent, say something out loud to no one in particular, make
+  something (see below), or do nothing — via a minimal JSON action schema.
+  That schema is the only "instruction" involved; it describes what's
+  mechanically possible, not what the agent should want. The prompts never
+  mention AI, models, or "free will" as a concept — telling an agent what it
+  *is* just gets it talking about that instead of acting, so it's only ever
+  told what it can do, in-world, first person.
 - **Conversations are not scripted by one model.** Each line is generated
   turn-by-turn by the actual speaking agent's own model, alternating back
   and forth (up to 8 turns, or until either side chooses to end it) — so
   what you see is genuinely each model's own voice, not one model writing
   both sides.
-- **Full transcript**: every line anyone says, and who said it, is logged
-  live in the transcript panel and shown as an on-canvas speech bubble as it
-  happens — nothing is summarized or paraphrased.
+- **Memory carries across encounters.** Every agent remembers what it's
+  said, heard, made, and who it's met, and that memory is fed back into both
+  its decisions and its next conversation with the same agent — so it won't
+  re-introduce itself from scratch every time it runs into someone it's
+  already spoken to.
+- **Making things**: an agent can leave anything at its current spot —
+  described however it wants, in its own words. The engine stores that
+  description as-is and never interprets it; it's just something other
+  agents can see nearby and react to, reference, or build on. This is the
+  only mechanism for anything resembling construction, writing, or shared
+  culture — nothing about what to build is ever suggested.
+- **Full transcript**: every line anyone says, and everything anyone makes,
+  is logged live in the transcript panel and shown as an on-canvas speech
+  bubble as it happens — nothing is summarized or paraphrased.
 - **No relationship system, no milestones, no scoring.** Whatever affinity,
   conflict, or connection emerges is only visible in what the agents actually
   say and do — there's no hidden state machine interpreting it for you.

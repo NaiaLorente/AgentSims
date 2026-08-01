@@ -1,6 +1,6 @@
 import type { Agent, MemoryEvent, MemoryKind } from './types';
 
-const MAX_MEMORIES = 60;
+const MAX_MEMORIES = 250;
 let counter = 0;
 
 export function makeMemoryId(): string {

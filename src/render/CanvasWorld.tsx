@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSimStore } from '../state/simStore';
-import type { Agent, World } from '../sim/types';
+import type { Agent, World, WorldObject } from '../sim/types';
 
 const TILE = 32;
 
@@ -107,6 +107,29 @@ function drawAgent(
   }
 }
 
+function drawObject(ctx: CanvasRenderingContext2D, obj: WorldObject) {
+  const cx = obj.pos.x * TILE + TILE / 2;
+  const cy = obj.pos.y * TILE + TILE / 2;
+  const s = TILE * 0.22;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = '#34d399';
+  ctx.fillRect(-s / 2, -s / 2, s, s);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-s / 2, -s / 2, s, s);
+  ctx.restore();
+
+  const caption = obj.content.length > 26 ? `${obj.content.slice(0, 26)}…` : obj.content;
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillText(caption, cx, cy + s / 2 + 9);
+}
+
 function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string) {
   const maxWidth = 180;
   ctx.font = '11px system-ui';
@@ -169,6 +192,10 @@ export function CanvasWorld() {
       canvas.width = state.world.width * TILE;
       canvas.height = state.world.height * TILE;
       drawWorld(ctx, state.world);
+
+      for (const obj of state.worldObjects) {
+        drawObject(ctx, obj);
+      }
 
       const centers = agentScreenCenters(state.agentOrder, state.agents);
       for (const id of state.agentOrder) {

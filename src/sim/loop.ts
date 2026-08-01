@@ -1,5 +1,5 @@
 import { useSimStore, makeLogId, type SimState } from '../state/simStore';
-import type { Agent, Direction, Vec2, WalkGoal } from './types';
+import type { Agent, Direction, Vec2, WalkGoal, WorldObject } from './types';
 import { findPath } from './pathfinding';
 import { randomTile } from './world';
 import { addMemory } from './memory';
@@ -22,6 +22,13 @@ const TALK_TRIGGER_RADIUS = 1;
 const IDLE_COOLDOWN_TICKS = 2;
 const MOVE_STEP = 5;
 const MAX_CONVERSATION_TURNS = 8;
+const MAX_WORLD_OBJECTS = 200;
+
+let objectCounter = 0;
+function makeWorldObjectId(): string {
+  objectCounter += 1;
+  return `obj_${Date.now().toString(36)}_${objectCounter}`;
+}
 
 function chebyshev(a: Vec2, b: Vec2): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -157,8 +164,9 @@ async function requestPlan(agentId: string, tickAtRequest: number): Promise<void
   const nearby = state0.agentOrder
     .map((id) => state0.agents[id])
     .filter((o): o is Agent => !!o && o.id !== agentId && chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
+  const nearbyObjects = state0.worldObjects.filter((o) => chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
 
-  const { system, user } = buildPlannerPrompt(agent, nearby, tickAtRequest);
+  const { system, user } = buildPlannerPrompt(agent, nearby, nearbyObjects);
   const resp = await chatJSON<PlannerResponse>(
     agentSettings(state0.settings, agent),
     { system, user, schema: PLANNER_SCHEMA },
@@ -216,6 +224,31 @@ async function requestPlan(agentId: string, tickAtRequest: number): Promise<void
         a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
         break;
       }
+      case 'create': {
+        if (intent.content) {
+          const obj: WorldObject = {
+            id: makeWorldObjectId(),
+            creatorId: a.id,
+            creatorLabel: a.label,
+            pos: { ...a.pos },
+            content: intent.content,
+            tick: tickAtRequest,
+          };
+          state.worldObjects.push(obj);
+          if (state.worldObjects.length > MAX_WORLD_OBJECTS) {
+            state.worldObjects.splice(0, state.worldObjects.length - MAX_WORLD_OBJECTS);
+          }
+          addMemory(a, tickAtRequest, 'made', `You left: "${intent.content}"`);
+          state.log.push({
+            id: makeLogId(),
+            tick: tickAtRequest,
+            text: `${a.label} made: "${intent.content}"`,
+            kind: 'creation',
+          });
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
+        break;
+      }
       case 'wait':
         a.activity = { kind: 'idle', cooldownUntilTick: tickAtRequest + IDLE_COOLDOWN_TICKS };
         break;
@@ -236,7 +269,7 @@ async function runConversation(aId: string, bId: string): Promise<void> {
     if (speaker.activity.kind !== 'talking' || listener.activity.kind !== 'talking') break;
     if (!speaker.model) break;
 
-    const { system, user } = buildConversationTurnPrompt(speaker, listener, transcript, state0.clock.tick);
+    const { system, user } = buildConversationTurnPrompt(speaker, listener, transcript);
     const resp = await chatJSON<ConversationTurnResponse>(
       agentSettings(state0.settings, speaker),
       { system, user, schema: CONVERSATION_TURN_SCHEMA },

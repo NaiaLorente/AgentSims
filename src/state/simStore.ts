@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { Agent, LogEntry, SimClock, World } from '../sim/types';
+import type { Agent, LogEntry, SimClock, World, WorldObject } from '../sim/types';
 import { buildWorld } from '../sim/world';
 import {
   type AgentConfig,
@@ -33,6 +33,7 @@ export interface SimState {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
+  worldObjects: WorldObject[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -83,6 +84,7 @@ export const useSimStore = create<SimState>()(
       agents,
       agentOrder,
       agentConfigs: initialConfigs,
+      worldObjects: [],
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
       settings: DEFAULT_CONNECTION_SETTINGS,
@@ -174,6 +176,7 @@ export const useSimStore = create<SimState>()(
           state.world = fresh.world;
           state.agents = fresh.agents;
           state.agentOrder = fresh.agentOrder;
+          state.worldObjects = [];
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;
@@ -188,6 +191,7 @@ export function serializeSnapshot(): {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
+  worldObjects: WorldObject[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -197,6 +201,7 @@ export function serializeSnapshot(): {
     agents: s.agents,
     agentOrder: s.agentOrder,
     agentConfigs: s.agentConfigs,
+    worldObjects: s.worldObjects,
     log: s.log,
     clock: { ...s.clock, running: false },
     settings: s.settings,
@@ -207,6 +212,7 @@ export function loadSnapshot(snapshot: {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
+  worldObjects?: WorldObject[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -215,6 +221,7 @@ export function loadSnapshot(snapshot: {
     state.agents = snapshot.agents;
     state.agentOrder = snapshot.agentOrder;
     state.agentConfigs = snapshot.agentConfigs ?? state.agentConfigs;
+    state.worldObjects = snapshot.worldObjects ?? [];
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
     state.settings = snapshot.settings;
