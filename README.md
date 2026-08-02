@@ -159,6 +159,18 @@ Most browsers exempt `localhost`, but if yours doesn't:
   happens — nothing is summarized or paraphrased. Simultaneous conversations
   (normal once there are 3+ agents) each get their own live card above the
   transcript so they don't blur into one thread.
+- **A model-comparison dashboard.** Since the whole point of running several
+  agents on different models is watching how they differ, a **Model
+  comparison** panel tallies each model's real behavior — messages spoken,
+  money earned/spent/given, and a breakdown of every action it's actually
+  taken — grouped by model rather than by agent, so if you reassign a model
+  mid-run its earlier history stays correctly attributed. It also charts
+  every relationship's affinity as a small trend line over time. Relationship
+  bars in the **Agents** inspector use the same color grading (hostile to
+  loving) to make the one real affinity number underneath each label visible
+  at a glance — this is a visualization of that single existing score, not a
+  separate "friendship"/"love" axis the engine tracks, since there's still no
+  fixed ladder of relationship stages.
 
 Project layout: simulation logic lives in `src/sim/`, the Ollama client and
 prompts in `src/llm/`, app state (including the agent roster) in
@@ -169,5 +181,6 @@ prompts in `src/llm/`, app state (including the agent roster) in
 
 Use the **Save** / **Load** buttons to snapshot the whole sandbox (agents,
 their assigned models, memories, reflections, needs, wallets, roles,
-relationships, house ownership, transcript) to your browser's local storage, so you can pick up
-where you left off.
+relationships, house ownership, transcript, per-model stats, and
+relationship-affinity history) to your browser's local storage, so you can
+pick up where you left off.

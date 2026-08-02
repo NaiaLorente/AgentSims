@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { ActiveConversation, Agent, LogEntry, SimClock, World, Zone } from '../sim/types';
+import type { ActiveConversation, AffinityPoint, Agent, LogEntry, ModelStats, SimClock, World, Zone } from '../sim/types';
 import { buildWorld } from '../sim/world';
 import { createZones } from '../sim/zones';
 import { agentIdCounter } from '../sim/ids';
@@ -40,6 +40,10 @@ export interface SimState {
   zones: Zone[];
   /** Conversations currently in flight, keyed by id — transient, not persisted across save/load. */
   activeConversations: Record<string, ActiveConversation>;
+  /** Cumulative per-model stats for the comparison dashboard, keyed by model name. */
+  modelStats: Record<string, ModelStats>;
+  /** Affinity-over-time history for the relationship trend sparklines, capped and append-only. */
+  affinityHistory: AffinityPoint[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -92,6 +96,8 @@ export const useSimStore = create<SimState>()(
       agentConfigs: initialConfigs,
       zones: createZones(),
       activeConversations: {},
+      modelStats: {},
+      affinityHistory: [],
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
       settings: DEFAULT_CONNECTION_SETTINGS,
@@ -185,6 +191,8 @@ export const useSimStore = create<SimState>()(
           state.agentOrder = fresh.agentOrder;
           state.zones = createZones();
           state.activeConversations = {};
+          state.modelStats = {};
+          state.affinityHistory = [];
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;
@@ -200,6 +208,8 @@ export function serializeSnapshot(): {
   agentOrder: string[];
   agentConfigs: AgentConfig[];
   zones: Zone[];
+  modelStats: Record<string, ModelStats>;
+  affinityHistory: AffinityPoint[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -210,6 +220,8 @@ export function serializeSnapshot(): {
     agentOrder: s.agentOrder,
     agentConfigs: s.agentConfigs,
     zones: s.zones,
+    modelStats: s.modelStats,
+    affinityHistory: s.affinityHistory,
     log: s.log,
     clock: { ...s.clock, running: false },
     settings: s.settings,
@@ -221,6 +233,8 @@ export function loadSnapshot(snapshot: {
   agentOrder: string[];
   agentConfigs: AgentConfig[];
   zones?: Zone[];
+  modelStats?: Record<string, ModelStats>;
+  affinityHistory?: AffinityPoint[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -236,6 +250,8 @@ export function loadSnapshot(snapshot: {
     // Older saves predate zones (or house ownership) — fall back to a fresh unowned set
     // rather than leaving zones undefined.
     state.zones = snapshot.zones ?? createZones();
+    state.modelStats = snapshot.modelStats ?? {};
+    state.affinityHistory = snapshot.affinityHistory ?? [];
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
     state.settings = snapshot.settings;

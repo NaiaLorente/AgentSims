@@ -68,6 +68,30 @@ function NeedsBars({ needs }: { needs: Agent['needs'] }) {
   );
 }
 
+/** One color-graded meter per relationship, hostile to loving, driven by the real affinity
+ *  score — deliberately not a separate hardcoded "friendship"/"love" axis the engine tracks;
+ *  the agent's own free-text label already carries that nuance, this just makes the one real
+ *  number underneath it visible at a glance. */
+function affinityColor(v: number): string {
+  if (v >= 60) return '#ec4899'; // loving
+  if (v >= 20) return '#22c55e'; // friendly
+  if (v > -20) return '#94a3b8'; // neutral
+  if (v > -60) return '#f97316'; // tense
+  return '#ef4444'; // hostile
+}
+
+function RelationshipBar({ affinity }: { affinity: number }) {
+  const pos = 50 + affinity / 2; // -100..100 -> 0..100%
+  const left = Math.min(50, pos);
+  const width = Math.abs(pos - 50);
+  return (
+    <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+      <div className="absolute inset-y-0 w-px bg-white/25" style={{ left: '50%' }} />
+      <div className="absolute inset-y-0 rounded-full" style={{ left: `${left}%`, width: `${width}%`, backgroundColor: affinityColor(affinity) }} />
+    </div>
+  );
+}
+
 export function AgentInspector() {
   const selectedAgentId = useSimStore((s) => s.selectedAgentId);
   const agent = useSimStore((s) => (s.selectedAgentId ? s.agents[s.selectedAgentId] : null));
@@ -142,11 +166,16 @@ export function AgentInspector() {
             {Object.keys(agent.relationships).length === 0 ? (
               <p className="text-[11px] text-white/30">Hasn't formed any yet.</p>
             ) : (
-              <ul className="flex flex-col gap-0.5 text-[11px] text-white/60">
+              <ul className="flex flex-col gap-1.5">
                 {Object.values(agent.relationships).map((r) => (
-                  <li key={r.otherId}>
-                    <span className="text-white/80">{r.otherLabel}</span>: {r.label}{' '}
-                    <span className="text-white/30">(affinity {r.affinity})</span>
+                  <li key={r.otherId} className="flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between text-[11px] text-white/60">
+                      <span>
+                        <span className="text-white/80">{r.otherLabel}</span>: {r.label}
+                      </span>
+                      <span className="text-white/30">{r.affinity}</span>
+                    </div>
+                    <RelationshipBar affinity={r.affinity} />
                   </li>
                 ))}
               </ul>

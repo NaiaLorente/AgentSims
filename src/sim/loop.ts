@@ -1,5 +1,5 @@
 import { useSimStore, makeLogId, type SimState } from '../state/simStore';
-import type { Agent, Direction, LogEntry, Vec2, WalkGoal } from './types';
+import type { Agent, Direction, LogEntry, ModelStats, Vec2, WalkGoal } from './types';
 import { findPath } from './pathfinding';
 import { randomTile } from './world';
 import { addMemory, makeMemoryId } from './memory';
@@ -32,6 +32,7 @@ const MAX_LOG_ENTRIES = 500;
 const REFLECTION_INTERVAL_TICKS = 60;
 const MIN_NEW_MEMORIES_FOR_REFLECTION = 4;
 const MAX_REFLECTIONS = 20;
+const MAX_AFFINITY_HISTORY = 400;
 
 const NEED_DECAY_PER_TICK = { hunger: 0.3, energy: 0.25, social: 0.15, fun: 0.2 };
 const REST_RESTORE = 25;
@@ -77,6 +78,22 @@ function decayNeeds(agent: Agent): void {
 
 function boostSocial(agent: Agent, amount: number): void {
   agent.needs.social = clamp100(agent.needs.social + amount);
+}
+
+/** Cumulative per-model stats, tagged with whichever model actually did the thing (not the
+ *  agent slot), so the comparison dashboard stays correct even if models get reassigned mid-run. */
+function statsFor(state: SimState, model: string): ModelStats {
+  let s = state.modelStats[model];
+  if (!s) {
+    s = { model, actionCounts: {}, messagesSpoken: 0, moneyEarned: 0, moneySpent: 0, moneyGiven: 0, moneyReceived: 0 };
+    state.modelStats[model] = s;
+  }
+  return s;
+}
+
+function bumpAction(state: SimState, model: string, kind: string): void {
+  const s = statsFor(state, model);
+  s.actionCounts[kind] = (s.actionCounts[kind] ?? 0) + 1;
 }
 
 /** Never blocks a choice, just makes it less effective — a very tired agent still walks
@@ -279,6 +296,7 @@ async function requestPlan(agentId: string): Promise<void> {
     // tick this was *sent* on would tag entries out of order relative to faster/slower peers.
     const now = state.clock.tick;
     if (resp.thought) addMemory(a, now, 'thought', resp.thought);
+    if (a.model) bumpAction(state, a.model, intent.kind);
 
     switch (intent.kind) {
       case 'move': {
@@ -322,6 +340,7 @@ async function requestPlan(agentId: string): Promise<void> {
           a.speech = { text: intent.message.slice(0, 200), expiresAtTick: now + 4 };
           addMemory(a, now, 'said', `You said: "${intent.message}"`);
           boostSocial(a, 1);
+          if (a.model) statsFor(state, a.model).messagesSpoken += 1;
           pushLogEntry(state, { tick: now, text: intent.message, kind: 'conversation', speakerLabel: a.label });
           for (const otherId of state.agentOrder) {
             if (otherId === agentId) continue;
@@ -371,6 +390,7 @@ async function requestPlan(agentId: string): Promise<void> {
           a.wallet -= FOOD_PRICE;
           a.needs.hunger = clamp100(a.needs.hunger + FOOD_RESTORE);
           addMemory(a, now, 'bought', `You bought food at ${zone.name} for $${FOOD_PRICE}.`);
+          if (a.model) statsFor(state, a.model).moneySpent += FOOD_PRICE;
         } else if (sells) {
           addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.`);
         } else {
@@ -387,6 +407,7 @@ async function requestPlan(agentId: string): Promise<void> {
             zone.ownerId = a.id;
             zone.ownerLabel = a.label;
             addMemory(a, now, 'bought', `You bought ${zone.name} for $${HOUSE_PRICE}. It's yours now.`);
+            if (a.model) statsFor(state, a.model).moneySpent += HOUSE_PRICE;
             pushLogEntry(state, { tick: now, text: `${a.label} bought ${zone.name}`, kind: 'event' });
           } else {
             addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but didn't have enough money.`);
@@ -412,6 +433,8 @@ async function requestPlan(agentId: string): Promise<void> {
             target.wallet += amount;
             addMemory(a, now, 'gave', `You gave $${amount} to ${target.label}.`);
             addMemory(target, now, 'gave', `${a.label} gave you $${amount}.`);
+            if (a.model) statsFor(state, a.model).moneyGiven += amount;
+            if (target.model) statsFor(state, target.model).moneyReceived += amount;
             pushLogEntry(state, { tick: now, text: `${a.label} gave $${amount} to ${target.label}`, kind: 'event' });
           } else {
             addMemory(a, now, 'gave', `You tried to give money to ${target.label}, but didn't have any to give.`);
@@ -446,6 +469,7 @@ async function requestPlan(agentId: string): Promise<void> {
         if (canWork && hasRole && zone) {
           a.wallet += WORK_PAY;
           addMemory(a, now, 'worked', `You worked at ${zone.name}, earning $${WORK_PAY}.`);
+          if (a.model) statsFor(state, a.model).moneyEarned += WORK_PAY;
         } else if (canWork) {
           addMemory(a, now, 'worked', `You tried to work here, but you don't have a role at this place.`);
         } else {
@@ -490,7 +514,13 @@ async function requestReflection(agentId: string, sinceTick: number): Promise<vo
   });
 }
 
-function applyRelationshipUpdate(agent: Agent, others: Agent[], resp: ConversationTurnResponse, tick: number): void {
+function applyRelationshipUpdate(
+  state: SimState,
+  agent: Agent,
+  others: Agent[],
+  resp: ConversationTurnResponse,
+  tick: number,
+): void {
   if (resp.affinityDelta === undefined && !resp.relationshipLabel) return;
   let target = others.length === 1 ? others[0] : undefined;
   if (!target && resp.about) {
@@ -507,6 +537,18 @@ function applyRelationshipUpdate(agent: Agent, others: Agent[], resp: Conversati
   const label = resp.relationshipLabel?.trim() || existing?.label || 'a stranger';
   agent.relationships[target.id] = { otherId: target.id, otherLabel: target.label, affinity, label, updatedTick: tick };
   addMemory(agent, tick, 'relationship', `You now think of ${target.label} as: "${label}" (affinity ${affinity}).`);
+
+  state.affinityHistory.push({
+    tick,
+    agentId: agent.id,
+    agentLabel: agent.label,
+    otherId: target.id,
+    otherLabel: target.label,
+    affinity,
+  });
+  if (state.affinityHistory.length > MAX_AFFINITY_HISTORY) {
+    state.affinityHistory.splice(0, state.affinityHistory.length - MAX_AFFINITY_HISTORY);
+  }
 }
 
 /** Removes one participant from a conversation (they left, or never had a model to speak
@@ -585,6 +627,7 @@ async function runConversation(conversationId: string): Promise<void> {
           sp.speech = { text: message.slice(0, 200), expiresAtTick: now + 4 };
           addMemory(sp, now, 'said', `You said to ${othersLabel}: "${message}"`);
           boostSocial(sp, SOCIAL_PER_TURN);
+          if (sp.model) statsFor(state, sp.model).messagesSpoken += 1;
         }
         for (const o of others) {
           const li = state.agents[o.id];
@@ -601,7 +644,7 @@ async function runConversation(conversationId: string): Promise<void> {
           listenerLabel: othersLabel,
         });
         state.activeConversations[conversationId]?.lines.push({ speakerLabel: speaker.label, text: message, tick: now });
-        if (sp) applyRelationshipUpdate(sp, others, resp, now);
+        if (sp) applyRelationshipUpdate(state, sp, others, resp, now);
       });
     }
 

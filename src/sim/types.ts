@@ -154,3 +154,28 @@ export interface ActiveConversation {
   lines: ConversationLine[];
   startedTick: number;
 }
+
+/** Cumulative, per-model — not per-agent, since two agents can share a model and the whole
+ *  point is comparing models against each other. Tagged with whatever model an agent was
+ *  actually running at the moment each event happened, so reassigning models mid-run doesn't
+ *  retroactively misattribute earlier history. */
+export interface ModelStats {
+  model: string;
+  actionCounts: Record<string, number>;
+  messagesSpoken: number;
+  moneyEarned: number;
+  moneySpent: number;
+  moneyGiven: number;
+  moneyReceived: number;
+}
+
+/** One point in a relationship's affinity-over-time history, recorded whenever it actually
+ *  changes (not sampled on a timer) — enough to draw a trend line without polling. */
+export interface AffinityPoint {
+  tick: number;
+  agentId: string;
+  agentLabel: string;
+  otherId: string;
+  otherLabel: string;
+  affinity: number;
+}

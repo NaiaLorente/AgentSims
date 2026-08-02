@@ -6,6 +6,7 @@ import { AgentInspector } from './ui/AgentInspector';
 import { EventLog } from './ui/EventLog';
 import { ZonesPanel } from './ui/ZonesPanel';
 import { LiveConversations } from './ui/LiveConversations';
+import { ModelDashboard } from './ui/ModelDashboard';
 import { startLoopWatcher } from './sim/loop';
 
 export default function App() {
@@ -42,6 +43,8 @@ export default function App() {
           <ZonesPanel />
         </div>
       </div>
+
+      <ModelDashboard />
     </div>
   );
 }
