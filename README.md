@@ -139,6 +139,16 @@ Most browsers exempt `localhost`, but if yours doesn't:
   fed back into both its decisions and its next conversation with the same
   agent — so it won't re-introduce itself from scratch every time it runs
   into someone it's already spoken to.
+- **Reflection, not just recency.** A flat memory list only ever shows the
+  last dozen or so raw events, so on a long run older patterns just fall off
+  the end. Periodically, an agent's own model looks back over what's built
+  up since its last reflection and distills it into a few short first-person
+  takeaways ("I've talked to B three times, we get along") — visible in the
+  **Agents** inspector and folded into every planning prompt afterward, so
+  something it concluded a while ago can still shape what it does now
+  instead of only being knowable from a raw play-by-play. This costs an
+  extra model call every so often per agent, independent of whatever else
+  it's doing at the time.
 - **Full transcript**: everything said, and every role claimed, is logged
   live in the transcript panel and shown as an on-canvas speech bubble as it
   happens — nothing is summarized or paraphrased. Simultaneous conversations
@@ -153,6 +163,6 @@ prompts in `src/llm/`, app state (including the agent roster) in
 ## Save / load
 
 Use the **Save** / **Load** buttons to snapshot the whole sandbox (agents,
-their assigned models, memories, needs, wallets, roles, relationships, house
-ownership, transcript) to your browser's local storage, so you can pick up
+their assigned models, memories, reflections, needs, wallets, roles,
+relationships, house ownership, transcript) to your browser's local storage, so you can pick up
 where you left off.

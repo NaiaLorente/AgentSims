@@ -78,6 +78,12 @@ function describeRelationships(agent: Agent): string {
   return `\n\nHow you see people you've met:\n${lines}`;
 }
 
+function describeReflections(agent: Agent): string {
+  if (agent.reflections.length === 0) return '';
+  const lines = agent.reflections.slice(-5).map((r) => `- ${r.text}`).join('\n');
+  return `\n\nLooking back, you've noticed:\n${lines}`;
+}
+
 export function buildPlannerPrompt(agent: Agent, nearbyAgents: Agent[], zones: Zone[]): { system: string; user: string } {
   const system = `You are ${agent.label}.
 
@@ -105,7 +111,7 @@ Respond ONLY with JSON of this shape:
 
   const zonesBlock = `\n\nPlaces on the map:\n${zones.map(describeZone).join('\n')}`;
 
-  const user = `${describeSelf(agent)}${describeRelationships(agent)}
+  const user = `${describeSelf(agent)}${describeReflections(agent)}${describeRelationships(agent)}
 
 People nearby:
 ${nearbyDesc}${zonesBlock}
@@ -245,6 +251,49 @@ Respond ONLY with JSON of this shape:
 ${transcriptText}
 
 Your turn.`;
+
+  return { system, user };
+}
+
+// ---------------------------------------------------------------------------
+// Reflection — periodically, independent of any particular decision, an agent's
+// own model looks back over its recent raw memory and distills it into a few
+// higher-level takeaways ("I've talked to B three times, we get along"). These
+// persist separately from the raw event stream and get folded into later
+// planning prompts, so what an agent has "concluded" survives being crowded
+// out by pure recency the way a single flat memory list would.
+// ---------------------------------------------------------------------------
+
+export const REFLECTION_SCHEMA = {
+  type: 'object',
+  properties: {
+    reflections: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['reflections'],
+};
+
+export interface ReflectionResponse {
+  reflections?: string[];
+}
+
+export function fallbackReflectionResponse(): ReflectionResponse {
+  return { reflections: [] };
+}
+
+export function buildReflectionPrompt(agent: Agent, sinceTick: number): { system: string; user: string } {
+  const system = `You are ${agent.label}. Take a step back from the moment-to-moment and think about what you've noticed lately — patterns in how you feel about people, how things are going for you, anything worth remembering as a takeaway rather than a blow-by-blow account.
+
+Respond ONLY with JSON: {"reflections": an array of 1 to 3 short first-person takeaways, each a single sentence — or an empty array if nothing stands out yet}`;
+
+  const recent = agent.memory
+    .filter((m) => m.tick > sinceTick)
+    .map((m) => `- [${m.kind}] ${m.text}`)
+    .join('\n');
+
+  const user = `What's happened since you last stopped to think:
+${recent || '(nothing much)'}
+
+What do you take away from it?`;
 
   return { system, user };
 }

@@ -2,18 +2,22 @@ import { useSimStore, makeLogId, type SimState } from '../state/simStore';
 import type { Agent, Direction, LogEntry, Vec2, WalkGoal } from './types';
 import { findPath } from './pathfinding';
 import { randomTile } from './world';
-import { addMemory } from './memory';
+import { addMemory, makeMemoryId } from './memory';
 import { zoneAt, zoneCenter } from './zones';
 import {
   buildConversationTurnPrompt,
   buildPlannerPrompt,
+  buildReflectionPrompt,
   CONVERSATION_TURN_SCHEMA,
   type ConversationTurnResponse,
   fallbackConversationTurnResponse,
   fallbackPlannerResponse,
+  fallbackReflectionResponse,
   parseIntent,
   PLANNER_SCHEMA,
   type PlannerResponse,
+  REFLECTION_SCHEMA,
+  type ReflectionResponse,
   type TranscriptLine,
 } from '../llm/prompts';
 import { chatJSON, type OllamaSettings } from '../llm/ollamaClient';
@@ -25,6 +29,9 @@ const MOVE_STEP = 5;
 const MAX_GROUP_SIZE = 5;
 const MAX_CONVERSATION_TURNS = 16;
 const MAX_LOG_ENTRIES = 500;
+const REFLECTION_INTERVAL_TICKS = 60;
+const MIN_NEW_MEMORIES_FOR_REFLECTION = 4;
+const MAX_REFLECTIONS = 20;
 
 const NEED_DECAY_PER_TICK = { hunger: 0.3, energy: 0.25, social: 0.15, fun: 0.2 };
 const REST_RESTORE = 25;
@@ -151,6 +158,29 @@ async function runTick(): Promise<void> {
 
   for (const conversationId of pendingConversations) {
     void runConversation(conversationId);
+  }
+
+  // Reflection runs on its own independent cadence — it doesn't touch activity state, so it
+  // can fire no matter what an agent's body is currently doing (walking, talking, whatever).
+  const toReflect: { id: string; since: number }[] = [];
+  for (const id of afterMovement.agentOrder) {
+    const a = afterMovement.agents[id];
+    if (!a || !a.model) continue;
+    if (tick - a.lastReflectionTick < REFLECTION_INTERVAL_TICKS) continue;
+    const newCount = a.memory.filter((m) => m.tick > a.lastReflectionTick).length;
+    if (newCount < MIN_NEW_MEMORIES_FOR_REFLECTION) continue;
+    toReflect.push({ id, since: a.lastReflectionTick });
+  }
+  if (toReflect.length > 0) {
+    useSimStore.getState().mutate((state) => {
+      for (const { id } of toReflect) {
+        const a = state.agents[id];
+        // Stamp immediately, before the async call resolves, so a slow response can't cause
+        // this same window to be picked up twice.
+        if (a) a.lastReflectionTick = tick;
+      }
+    });
+    for (const { id, since } of toReflect) void requestReflection(id, since);
   }
 }
 
@@ -406,6 +436,35 @@ async function requestPlan(agentId: string): Promise<void> {
       case 'wait':
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
+    }
+  });
+}
+
+/** Runs independently of planning/conversation — doesn't touch activity state at all, so it
+ *  never competes with or blocks whatever the agent is otherwise doing. */
+async function requestReflection(agentId: string, sinceTick: number): Promise<void> {
+  const state0 = useSimStore.getState();
+  const agent = state0.agents[agentId];
+  if (!agent) return;
+
+  const { system, user } = buildReflectionPrompt(agent, sinceTick);
+  const resp = await chatJSON<ReflectionResponse>(
+    agentSettings(state0.settings, agent),
+    { system, user, schema: REFLECTION_SCHEMA },
+    fallbackReflectionResponse(),
+  );
+  const texts = (resp.reflections ?? []).map((t) => t.trim()).filter(Boolean).slice(0, 3);
+  if (texts.length === 0) return;
+
+  useSimStore.getState().mutate((state) => {
+    const a = state.agents[agentId];
+    if (!a) return;
+    const now = state.clock.tick;
+    for (const text of texts) {
+      a.reflections.push({ id: makeMemoryId(), tick: now, kind: 'reflection', text });
+    }
+    if (a.reflections.length > MAX_REFLECTIONS) {
+      a.reflections.splice(0, a.reflections.length - MAX_REFLECTIONS);
     }
   });
 }

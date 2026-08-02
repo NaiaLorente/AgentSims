@@ -61,6 +61,8 @@ export function createAgentFromConfig(config: AgentConfig, world: World, index: 
     path: [],
     activity: { kind: 'idle', cooldownUntilTick: 0 },
     memory: [],
+    reflections: [],
+    lastReflectionTick: 0,
     speech: null,
     needs: { hunger: STARTING_NEED, energy: STARTING_NEED, social: STARTING_NEED, fun: STARTING_NEED },
     wallet: STARTING_WALLET,

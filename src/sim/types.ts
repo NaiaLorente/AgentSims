@@ -34,7 +34,8 @@ export type MemoryKind =
   | 'worked' // earned money at a job
   | 'need' // satisfied hunger/energy/fun
   | 'bought' // spent money on food
-  | 'relationship'; // how it feels about another agent changed
+  | 'relationship' // how it feels about another agent changed
+  | 'reflection'; // a higher-level takeaway synthesized from raw memory, not a single event
 
 export interface MemoryEvent {
   id: string;
@@ -107,6 +108,11 @@ export interface Agent {
   path: Vec2[]; // remaining tiles to walk, next-first
   activity: ActivityState;
   memory: MemoryEvent[];
+  /** Higher-level takeaways the agent's own model periodically synthesizes from its raw memory
+   *  ("I've talked to B three times, we get along") — separate from the raw event-by-event
+   *  stream so it survives being crowded out by recency and actually informs later decisions. */
+  reflections: MemoryEvent[];
+  lastReflectionTick: number;
   speech: SpeechBubble | null;
   needs: Needs;
   wallet: number;

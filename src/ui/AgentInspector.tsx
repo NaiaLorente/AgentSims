@@ -154,6 +154,19 @@ export function AgentInspector() {
           </div>
 
           <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Reflections</h3>
+            {agent.reflections.length === 0 ? (
+              <p className="text-[11px] text-white/30">Nothing yet — these build up periodically.</p>
+            ) : (
+              <ul className="flex flex-col gap-1 text-[11px] text-indigo-200/70">
+                {[...agent.reflections].reverse().map((r) => (
+                  <li key={r.id}>{r.text}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Recent history</h3>
             <ul className="flex flex-col gap-1 text-[11px] text-white/50">
               {recentMemories(agent, 12).map((m) => (
