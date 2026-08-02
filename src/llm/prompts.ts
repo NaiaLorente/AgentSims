@@ -14,7 +14,7 @@ export const PLANNER_SCHEMA = {
   properties: {
     action: {
       type: 'string',
-      enum: ['move', 'go_to', 'talk_to', 'say', 'satisfy_need', 'buy_food', 'take_job', 'work', 'wait'],
+      enum: ['move', 'go_to', 'talk_to', 'say', 'satisfy_need', 'buy_food', 'buy_house', 'take_job', 'work', 'wait'],
     },
     direction: { type: 'string', enum: ['north', 'south', 'east', 'west', 'random'] },
     targetId: { type: 'string' },
@@ -48,7 +48,14 @@ const ZONE_DESCRIPTIONS: Record<Zone['kind'], string> = {
 };
 
 function describeZone(zone: Zone): string {
-  return `- ${zone.name} (id: "${zone.id}") — ${ZONE_DESCRIPTIONS[zone.kind]}`;
+  const base = ZONE_DESCRIPTIONS[zone.kind];
+  const ownership =
+    zone.kind === 'house'
+      ? zone.ownerId
+        ? ` — owned by ${zone.ownerLabel}, only they can rest here`
+        : ' — unowned, can be bought'
+      : '';
+  return `- ${zone.name} (id: "${zone.id}") — ${base}${ownership}`;
 }
 
 function needStatus(value: number): string {
@@ -81,12 +88,15 @@ You can:
 - say something out loud, to no one in particular
 - rest to restore energy, or have fun, if you're standing at a place suited for it — pick which need
 - buy food, if you're standing at a place that sells it — costs money, restores hunger
+- buy a house, if you're standing at one that's unowned — costs money, makes it yours; only you can rest there afterward
 - take a job or role somewhere, in your own words (a title you make up) — only takes effect if you're standing at the place right now
 - work, if you're standing at the place where you hold a job — earns money
 - do nothing
 
+Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it.
+
 Respond ONLY with JSON of this shape:
-{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "take_job" | "work" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list) or "talk_to" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "take_job" | "work" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list) or "talk_to" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -136,6 +146,8 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>, 
       return { kind: 'wait' };
     case 'buy_food':
       return { kind: 'buy_food' };
+    case 'buy_house':
+      return { kind: 'buy_house' };
     case 'take_job': {
       const title = (resp.title ?? '').trim().slice(0, 80);
       if (!title) return { kind: 'wait' };
@@ -150,10 +162,11 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>, 
 
 // ---------------------------------------------------------------------------
 // Conversation — turn by turn. Each speaker's OWN model generates its OWN
-// line; nothing is written on another agent's behalf. Each turn also gets
-// the speaker's own memory of this specific other agent, so they don't
-// re-introduce themselves every single time they meet. A turn can also
-// optionally update how the speaker feels about the listener — still purely
+// line; nothing is written on another agent's behalf. Two or more people can
+// be in the same conversation (anyone nearby can walk up and join one
+// already in progress), so a turn is built from "everyone else currently
+// here," not a single fixed partner. A turn can also optionally update how
+// the speaker feels about one specific other person present — still purely
 // the speaker's own call, not something the engine infers from the words.
 // ---------------------------------------------------------------------------
 
@@ -164,6 +177,7 @@ export const CONVERSATION_TURN_SCHEMA = {
     end: { type: 'boolean' },
     relationshipLabel: { type: 'string' },
     affinityDelta: { type: 'number' },
+    about: { type: 'string' },
   },
   required: ['message'],
 };
@@ -173,6 +187,7 @@ export interface ConversationTurnResponse {
   end?: boolean;
   relationshipLabel?: string;
   affinityDelta?: number;
+  about?: string;
 }
 
 export function fallbackConversationTurnResponse(): ConversationTurnResponse {
@@ -186,26 +201,40 @@ export interface TranscriptLine {
 
 export function buildConversationTurnPrompt(
   speaker: Agent,
-  listener: Agent,
+  others: Agent[],
   transcript: TranscriptLine[],
 ): { system: string; user: string } {
-  const system = `You are ${speaker.label}. You're currently with ${listener.label} — say something back to them. Only leave "message" empty if you genuinely have nothing to add.
+  const otherNames = others.map((o) => o.label);
+  const groupDesc =
+    otherNames.length === 1
+      ? otherNames[0]
+      : `${otherNames.slice(0, -1).join(', ')} and ${otherNames[otherNames.length - 1]}`;
+
+  const aboutField =
+    others.length > 1
+      ? `, "about": optional, only needed alongside relationshipLabel/affinityDelta — whose label (from ${otherNames.join(', ')}) it's about`
+      : '';
+
+  const system = `You are ${speaker.label}. You're currently with ${groupDesc} — say something back. Only leave "message" empty if you genuinely have nothing to add. Anyone here can leave whenever they want by setting "end": true, without ending it for the others.
 
 Respond ONLY with JSON of this shape:
-{"message": what you say next, "end": true if you want to end this, otherwise false, "relationshipLabel": optional, a short phrase in your own words for how you'd describe ${listener.label} to yourself right now (e.g. "a new friend", "annoying", "someone I trust") — only include this if it's changed, "affinityDelta": optional, a small number from -10 to 10 for how this exchange changed how you feel about ${listener.label} — only include this if something changed}`;
+{"message": what you say next, "end": true if you want to leave this conversation, otherwise false, "relationshipLabel": optional, a short phrase in your own words for how you'd describe someone here to yourself right now (e.g. "a new friend", "annoying", "someone I trust") — only include this if it's changed, "affinityDelta": optional, a small number from -10 to 10 for how this exchange changed how you feel about them — only include this if something changed${aboutField}}`;
 
-  const existing = speaker.relationships[listener.id];
-  const relationshipBlock = existing
-    ? `Right now you think of ${listener.label} as: "${existing.label}" (affinity ${existing.affinity}).\n\n`
-    : '';
+  const relationshipLines = others
+    .map((o) => {
+      const rel = speaker.relationships[o.id];
+      return rel ? `- ${o.label}: "${rel.label}" (affinity ${rel.affinity})` : null;
+    })
+    .filter((l): l is string => !!l);
+  const relationshipBlock = relationshipLines.length > 0 ? `How you see them so far:\n${relationshipLines.join('\n')}\n\n` : '';
 
   const priorHistory = speaker.memory
-    .filter((m) => m.text.includes(listener.label))
+    .filter((m) => others.some((o) => m.text.includes(o.label)))
     .slice(-8)
     .map((m) => `- ${m.text}`)
     .join('\n');
 
-  const historyBlock = priorHistory ? `What you remember about ${listener.label}:\n${priorHistory}\n\n` : '';
+  const historyBlock = priorHistory ? `What you remember:\n${priorHistory}\n\n` : '';
 
   const transcriptText =
     transcript.length === 0

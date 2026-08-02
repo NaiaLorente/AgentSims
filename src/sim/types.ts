@@ -19,6 +19,10 @@ export interface Zone {
   kind: ZoneKind;
   name: string;
   bounds: { x: number; y: number; w: number; h: number }; // tile-space rectangle
+  /** Houses can be bought — the owner is the only one who can rest here. Unowned houses (and
+   *  every non-house zone, which never has an owner) are open to anyone. */
+  ownerId: string | null;
+  ownerLabel: string | null;
 }
 
 export type MemoryKind =
@@ -48,6 +52,7 @@ export type AgentIntent =
   | { kind: 'say'; message: string }
   | { kind: 'satisfy_need'; need: 'energy' | 'fun' }
   | { kind: 'buy_food' }
+  | { kind: 'buy_house' }
   | { kind: 'take_job'; title: string }
   | { kind: 'work' }
   | { kind: 'wait' };
@@ -85,7 +90,7 @@ export type ActivityState =
   | { kind: 'idle'; cooldownUntilTick: number }
   | { kind: 'thinking' } // waiting on a decision LLM call
   | { kind: 'walking'; then: WalkGoal }
-  | { kind: 'talking'; withAgentId: string }; // a multi-turn conversation is in flight
+  | { kind: 'talking'; conversationId: string }; // in a multi-turn conversation — could be 2+ people
 
 export interface SpeechBubble {
   text: string;
@@ -132,11 +137,12 @@ export interface ConversationLine {
 }
 
 /** A conversation currently in flight, tracked separately from the flat transcript so
- * simultaneous pairwise conversations (normal with 3+ agents) stay visually separable. */
+ * simultaneous conversations (normal with several agents around) stay visually separable.
+ * Two or more participants — anyone nearby can walk up and join an ongoing one. */
 export interface ActiveConversation {
   id: string;
-  participantIds: [string, string];
-  participantLabels: [string, string];
+  participantIds: string[];
+  participantLabels: string[];
   lines: ConversationLine[];
   startedTick: number;
 }

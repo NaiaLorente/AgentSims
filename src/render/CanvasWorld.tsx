@@ -335,7 +335,16 @@ function drawWindow(ctx: CanvasRenderingContext2D, x: number, y: number, size: n
   ctx.stroke();
 }
 
-function drawHouseScene(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, variant: number, t: number) {
+function drawHouseScene(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  variant: number,
+  t: number,
+  ownerColor: string | null,
+) {
   const cx = x + w / 2;
   const groundY = y + h * 0.82;
   drawGroundShadow(ctx, cx, groundY, w * 0.32, h * 0.06);
@@ -389,6 +398,28 @@ function drawHouseScene(ctx: CanvasRenderingContext2D, x: number, y: number, w: 
   ctx.fillRect(cx - doorW / 2, groundY - doorH, doorW, doorH);
 
   drawWindow(ctx, bodyLeft + bodyW * 0.16, bodyTop + bodyH * 0.2, bodyW * 0.18);
+
+  if (ownerColor) {
+    // a little pennant on the roof peak, in the owner's own color — the only visual claim
+    // of ownership, since anyone else is turned away if they try to rest here.
+    const poleX = cx;
+    const poleTopY = bodyTop - roofH - 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(poleX, bodyTop - roofH);
+    ctx.lineTo(poleX, poleTopY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(poleX, poleTopY);
+    ctx.lineTo(poleX + 7, poleTopY + 3);
+    ctx.lineTo(poleX, poleTopY + 6);
+    ctx.closePath();
+    ctx.fillStyle = ownerColor;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+    ctx.stroke();
+  }
 }
 
 function drawAwning(
@@ -559,7 +590,7 @@ function drawParkScene(ctx: CanvasRenderingContext2D, zone: Zone, x: number, y: 
   drawBench(ctx, x + w * 0.25, y + h * 0.72, Math.min(w, h) * 0.2);
 }
 
-function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number) {
+function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number, ownerColor: string | null) {
   const x = zone.bounds.x * TILE;
   const y = zone.bounds.y * TILE;
   const w = zone.bounds.w * TILE;
@@ -574,7 +605,7 @@ function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number) {
   ctx.stroke();
 
   if (zone.kind === 'house') {
-    drawHouseScene(ctx, x, y, w, h, hashStr(zone.id), t);
+    drawHouseScene(ctx, x, y, w, h, hashStr(zone.id), t, ownerColor);
   } else if (zone.kind === 'shop') {
     drawShopScene(ctx, x, y, w, h);
   } else if (zone.kind === 'restaurant') {
@@ -583,7 +614,8 @@ function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number) {
     drawParkScene(ctx, zone, x, y, w, h, t);
   }
 
-  drawZoneLabel(ctx, x + w / 2, y - 8, zone.name);
+  const label = zone.kind === 'house' && zone.ownerLabel ? `${zone.name} · ${zone.ownerLabel}'s` : zone.name;
+  drawZoneLabel(ctx, x + w / 2, y - 8, label);
 }
 
 function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, text: string) {
@@ -661,7 +693,8 @@ export function CanvasWorld() {
       drawGround(ctx, state.world, t);
 
       for (const zone of state.zones) {
-        drawZone(ctx, zone, t);
+        const ownerColor = zone.ownerId ? (state.agents[zone.ownerId]?.color ?? null) : null;
+        drawZone(ctx, zone, t, ownerColor);
       }
 
       const targets = agentTargets(state.agentOrder, state.agents);

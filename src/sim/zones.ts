@@ -8,13 +8,14 @@ import type { Zone } from './types';
  * still entirely up to the agents.
  */
 export function createZones(): Zone[] {
-  return [
-    { id: 'house-a', kind: 'house', name: 'House A', bounds: { x: 1, y: 1, w: 3, h: 3 } },
-    { id: 'house-b', kind: 'house', name: 'House B', bounds: { x: 1, y: 9, w: 3, h: 3 } },
-    { id: 'shop', kind: 'shop', name: 'The Shop', bounds: { x: 16, y: 1, w: 3, h: 3 } },
-    { id: 'restaurant', kind: 'restaurant', name: 'The Restaurant', bounds: { x: 16, y: 9, w: 3, h: 3 } },
-    { id: 'park', kind: 'park', name: 'The Park', bounds: { x: 8, y: 5, w: 4, h: 4 } },
+  const bounds = [
+    { id: 'house-a', kind: 'house' as const, name: 'House A', bounds: { x: 1, y: 1, w: 3, h: 3 } },
+    { id: 'house-b', kind: 'house' as const, name: 'House B', bounds: { x: 1, y: 9, w: 3, h: 3 } },
+    { id: 'shop', kind: 'shop' as const, name: 'The Shop', bounds: { x: 16, y: 1, w: 3, h: 3 } },
+    { id: 'restaurant', kind: 'restaurant' as const, name: 'The Restaurant', bounds: { x: 16, y: 9, w: 3, h: 3 } },
+    { id: 'park', kind: 'park' as const, name: 'The Park', bounds: { x: 8, y: 5, w: 4, h: 4 } },
   ];
+  return bounds.map((z) => ({ ...z, ownerId: null, ownerLabel: null }));
 }
 
 export function zoneCenter(zone: Zone): { x: number; y: number } {

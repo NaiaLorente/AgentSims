@@ -30,11 +30,26 @@ function needBarColor(value: number): string {
   return '#ef4444';
 }
 
+/** Mirrors the actual thresholds in sim/loop.ts (shouldStepThisTick / moveStepFor) — these
+ *  needs aren't just flavor text, so the UI should say when they're actually slowing things down. */
+function consequenceHint(key: keyof Agent['needs'], value: number): string | null {
+  if (key === 'energy') {
+    if (value < 12) return 'moving much slower';
+    if (value < 30) return 'moving slower';
+  }
+  if (key === 'hunger' || key === 'fun') {
+    if (value < 15) return 'much shorter moves';
+    if (value < 35) return 'shorter moves';
+  }
+  return null;
+}
+
 function NeedsBars({ needs }: { needs: Agent['needs'] }) {
   return (
     <div className="flex flex-col gap-1">
       {(Object.keys(needs) as (keyof Agent['needs'])[]).map((key) => {
         const value = needs[key];
+        const hint = consequenceHint(key, value);
         return (
           <div key={key} className="flex items-center gap-2 text-[11px]">
             <span className="w-12 shrink-0 text-white/50">{NEED_LABELS[key]}</span>
@@ -45,6 +60,7 @@ function NeedsBars({ needs }: { needs: Agent['needs'] }) {
               />
             </div>
             <span className="w-8 shrink-0 text-right text-white/40">{Math.round(value)}</span>
+            {hint && <span className="shrink-0 text-orange-400/70">{hint}</span>}
           </div>
         );
       })}
@@ -58,6 +74,8 @@ export function AgentInspector() {
   const agents = useSimStore((s) => s.agents);
   const selectAgent = useSimStore((s) => s.selectAgent);
   const agentOrder = useSimStore((s) => s.agentOrder);
+  const zones = useSimStore((s) => s.zones);
+  const ownedHouses = zones.filter((z) => z.kind === 'house' && z.ownerId === selectedAgentId);
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
@@ -95,6 +113,7 @@ export function AgentInspector() {
             </p>
             <p className="mt-1 text-[11px] text-white/40">
               Currently: {activityLabel(agent.activity.kind)} · ${agent.wallet}
+              {ownedHouses.length > 0 && <> · owns {ownedHouses.map((h) => h.name).join(', ')}</>}
             </p>
           </div>
 

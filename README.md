@@ -86,16 +86,21 @@ Most browsers exempt `localhost`, but if yours doesn't:
   to compare temperature/seed variance, or different models to compare how
   each one behaves.
 - **Needs**: hunger, energy, social, and fun, each decaying slowly over
-  time and visible in the **Agents** inspector. They're purely informational
-  — nothing forces an agent to act on a low need, and nothing bad happens if
-  it doesn't. Energy is restored by resting at a house, fun by spending time
-  at the park, hunger by buying food, and social by simply talking to people.
-- **Jobs & money**: an agent can claim a role or job title anywhere, in its
-  own words (a title it makes up, not picked from a list) — but only while
-  actually standing at that place, and nothing stops two agents from
+  time and visible in the **Agents** inspector. They never block a choice —
+  an agent is always free to ignore a need entirely — but they're not just
+  flavor text either: being very tired visibly slows how fast an agent
+  covers ground tick to tick, and being very hungry or bored shortens how
+  far a single deliberate move actually gets it. Energy is restored by
+  resting at a house it owns, fun by spending time at the park, hunger by
+  buying food, and social by simply talking to people.
+- **Jobs, houses, and money**: an agent can claim a job title anywhere, in
+  its own words (a title it makes up, not picked from a list) — but only
+  while actually standing at that place, and nothing stops two agents from
   claiming the same one. Holding a job at the shop or restaurant lets an
-  agent work there to earn money, which can then be spent on food. It's a
-  real, if small, economy — entirely opt-in.
+  agent work there to earn money. Houses are different: they can be *bought*
+  outright, and buying one is exclusive — once an agent owns a house, only
+  they can rest there, so money and shelter actually matter to what an agent
+  can do next. It's a real, if small, economy — entirely opt-in.
 - **Politics, informally.** There's no election system or ranking — "leader
   of the park," "shopkeeper," or anything else is just a role an agent
   declares for itself the same way a job is claimed. Conflicting claims,
@@ -104,18 +109,24 @@ Most browsers exempt `localhost`, but if yours doesn't:
   claimed what, where, as a single across-the-map view.
 - **Decisions**: when an agent is free, its own assigned model is asked what
   it wants to do — move, walk to a specific place, approach and talk to a
-  nearby agent, say something out loud, rest, have fun, buy food, claim a
-  role, work, or do nothing — via a minimal JSON action schema. That schema
-  is the only "instruction" involved; it describes what's mechanically
-  possible, not what the agent should want. The prompts never mention AI,
-  models, or "free will" as a concept — telling an agent what it *is* just
-  gets it talking about that instead of acting, so it's only ever told what
-  it can do, in-world, first person.
-- **Conversations are not scripted by one model.** Each line is generated
-  turn-by-turn by the actual speaking agent's own model, alternating back
-  and forth (up to 8 turns, or until either side chooses to end it) — so
-  what you see is genuinely each model's own voice, not one model writing
-  both sides.
+  nearby agent, say something out loud, rest, have fun, buy food, buy a
+  house, claim a role, work, or do nothing — via a minimal JSON action
+  schema. That schema is the only "instruction" involved; it describes
+  what's mechanically possible, not what the agent should want. The prompts
+  never mention AI, models, or "free will" as a concept — telling an agent
+  what it *is* just gets it talking about that instead of acting, so it's
+  only ever told what it can do, in-world, first person. There is no
+  separate system prompt steering tone, personality, or how an agent should
+  talk — whatever character comes through is entirely the underlying
+  model's own.
+- **Conversations are not scripted by one model, and aren't limited to two
+  people.** Each line is generated turn-by-turn by the actual speaking
+  agent's own model. Walking up to someone already mid-conversation folds
+  you into that same conversation (up to 5 at once) instead of starting a
+  separate one, and anyone can leave whenever they choose without ending it
+  for whoever's left — so what you see is genuinely each model's own voice,
+  in a group that can grow or shrink while it's happening, not one model
+  writing every side.
 - **Relationships are remembered, not just implied by chat.** After any
   exchange, the speaking agent's own model can optionally update how it
   feels about the other person — a short label in its own words ("a close
@@ -142,5 +153,6 @@ prompts in `src/llm/`, app state (including the agent roster) in
 ## Save / load
 
 Use the **Save** / **Load** buttons to snapshot the whole sandbox (agents,
-their assigned models, memories, transcript) to your browser's local
-storage, so you can pick up where you left off.
+their assigned models, memories, needs, wallets, roles, relationships, house
+ownership, transcript) to your browser's local storage, so you can pick up
+where you left off.

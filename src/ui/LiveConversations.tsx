@@ -11,9 +11,7 @@ function ConversationCard({ conversation }: { conversation: ActiveConversation }
 
   return (
     <div className="flex w-72 shrink-0 flex-col gap-1.5 rounded-lg border border-sky-500/20 bg-sky-500/5 p-2.5">
-      <div className="text-xs font-semibold text-sky-300">
-        {conversation.participantLabels[0]} ↔ {conversation.participantLabels[1]}
-      </div>
+      <div className="text-xs font-semibold text-sky-300">{conversation.participantLabels.join(' ↔ ')}</div>
       <div className="flex max-h-40 flex-col gap-1 overflow-y-auto pr-1 text-xs">
         {conversation.lines.length === 0 && <p className="text-white/40">…</p>}
         {conversation.lines.map((line, i) => (
@@ -29,9 +27,11 @@ function ConversationCard({ conversation }: { conversation: ActiveConversation }
 }
 
 /**
- * Simultaneous pairwise conversations are normal once there are 3+ agents —
+ * Simultaneous conversations are normal once there are several agents around —
  * this gives each one its own visible thread so they don't blur together
- * into one hard-to-follow flat feed.
+ * into one hard-to-follow flat feed. A single conversation can also have more
+ * than two participants, since anyone nearby can walk up and join one already
+ * in progress.
  */
 export function LiveConversations() {
   const activeConversations = useSimStore((s) => s.activeConversations);

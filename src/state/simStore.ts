@@ -199,6 +199,7 @@ export function serializeSnapshot(): {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
+  zones: Zone[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -208,6 +209,7 @@ export function serializeSnapshot(): {
     agents: s.agents,
     agentOrder: s.agentOrder,
     agentConfigs: s.agentConfigs,
+    zones: s.zones,
     log: s.log,
     clock: { ...s.clock, running: false },
     settings: s.settings,
@@ -218,6 +220,7 @@ export function loadSnapshot(snapshot: {
   agents: Record<string, Agent>;
   agentOrder: string[];
   agentConfigs: AgentConfig[];
+  zones?: Zone[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -230,6 +233,9 @@ export function loadSnapshot(snapshot: {
     state.agents = snapshot.agents;
     state.agentOrder = snapshot.agentOrder;
     state.agentConfigs = snapshot.agentConfigs ?? state.agentConfigs;
+    // Older saves predate zones (or house ownership) — fall back to a fresh unowned set
+    // rather than leaving zones undefined.
+    state.zones = snapshot.zones ?? createZones();
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
     state.settings = snapshot.settings;

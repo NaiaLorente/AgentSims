@@ -22,7 +22,7 @@ export function ZonesPanel() {
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-white/10 bg-white/5 p-3 text-sm">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-white/60">
-        Zones <span className="normal-case text-white/30">— places, and who's claimed a role there</span>
+        Zones <span className="normal-case text-white/30">— places, who owns them, who's claimed a role there</span>
       </h2>
       <ul className="flex flex-col gap-2">
         {zones.map((zone) => {
@@ -37,8 +37,19 @@ export function ZonesPanel() {
                 <span aria-hidden>{ZONE_ICON[zone.kind]}</span>
                 <span className="font-medium">{zone.name}</span>
               </div>
+              {zone.kind === 'house' && (
+                <p className="mt-1 text-white/60">
+                  {zone.ownerId ? (
+                    <>
+                      Owned by <span className="text-white/80">{zone.ownerLabel}</span>
+                    </>
+                  ) : (
+                    <span className="text-white/30">Unowned — can be bought</span>
+                  )}
+                </p>
+              )}
               {holders.length === 0 ? (
-                <p className="mt-1 text-white/30">No one's claimed a role here.</p>
+                <p className="mt-1 text-white/30">No role claimed here.</p>
               ) : (
                 <ul className="mt-1 flex flex-col gap-0.5 pl-5">
                   {holders.map(({ agent, role }, i) => (

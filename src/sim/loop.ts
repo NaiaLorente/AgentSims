@@ -22,7 +22,8 @@ const NEARBY_RADIUS = 6;
 const TALK_TRIGGER_RADIUS = 1;
 const IDLE_COOLDOWN_TICKS = 2;
 const MOVE_STEP = 5;
-const MAX_CONVERSATION_TURNS = 8;
+const MAX_GROUP_SIZE = 5;
+const MAX_CONVERSATION_TURNS = 16;
 const MAX_LOG_ENTRIES = 500;
 
 const NEED_DECAY_PER_TICK = { hunger: 0.3, energy: 0.25, social: 0.15, fun: 0.2 };
@@ -30,6 +31,7 @@ const REST_RESTORE = 25;
 const FUN_RESTORE = 25;
 const FOOD_PRICE = 3;
 const FOOD_RESTORE = 25;
+const HOUSE_PRICE = 50;
 const WORK_PAY = 4;
 const SOCIAL_PER_TURN = 3;
 
@@ -70,6 +72,23 @@ function boostSocial(agent: Agent, amount: number): void {
   agent.needs.social = clamp100(agent.needs.social + amount);
 }
 
+/** Never blocks a choice, just makes it less effective — a very tired agent still walks
+ *  wherever it decides to, it just covers ground more slowly, tick to tick. */
+function shouldStepThisTick(agent: Agent, tick: number): boolean {
+  if (agent.needs.energy < 12) return tick % 4 === 0;
+  if (agent.needs.energy < 30) return tick % 2 === 0;
+  return true;
+}
+
+/** A very hungry or bored agent's own deliberate moves cover less distance — same idea,
+ *  different mechanism (this affects one `move` command's reach, not tick-to-tick speed). */
+function moveStepFor(agent: Agent): number {
+  const limiting = Math.min(agent.needs.hunger, agent.needs.fun);
+  if (limiting < 15) return 2;
+  if (limiting < 35) return 3;
+  return MOVE_STEP;
+}
+
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
 /** Call once on app start. Keeps a setInterval in sync with clock.running/speed. */
@@ -102,7 +121,7 @@ export function startLoopWatcher(): void {
 
 async function runTick(): Promise<void> {
   const tick = useSimStore.getState().clock.tick + 1;
-  const pendingConversations: { aId: string; bId: string }[] = [];
+  const pendingConversations: string[] = [];
 
   useSimStore.getState().mutate((state) => {
     state.clock.tick = tick;
@@ -130,21 +149,16 @@ async function runTick(): Promise<void> {
     for (const id of toPlan) void requestPlan(id);
   }
 
-  for (const { aId, bId } of pendingConversations) {
-    void runConversation(aId, bId);
+  for (const conversationId of pendingConversations) {
+    void runConversation(conversationId);
   }
 }
 
-function stepAgent(
-  state: SimState,
-  agent: Agent,
-  tick: number,
-  pending: { aId: string; bId: string }[],
-): void {
+function stepAgent(state: SimState, agent: Agent, tick: number, pending: string[]): void {
   if (agent.speech && agent.speech.expiresAtTick <= tick) agent.speech = null;
 
   if (agent.activity.kind === 'walking') {
-    if (agent.path.length > 0) {
+    if (agent.path.length > 0 && shouldStepThisTick(agent, tick)) {
       agent.pos = agent.path.shift()!;
     }
     if (agent.path.length === 0) {
@@ -154,27 +168,45 @@ function stepAgent(
   // 'talking', 'thinking', 'idle' are handled elsewhere (async conversation / planning pass).
 }
 
-function resolveArrival(
-  state: SimState,
-  agent: Agent,
-  goal: WalkGoal,
-  tick: number,
-  pending: { aId: string; bId: string }[],
-): Agent['activity'] {
+/** Walking up to someone either starts a brand new conversation, or — if they're already in
+ *  one and it's not full — folds the newcomer into that same ongoing conversation instead. */
+function resolveArrival(state: SimState, agent: Agent, goal: WalkGoal, tick: number, pending: string[]): Agent['activity'] {
   if (goal.kind === 'wander') {
     return { kind: 'idle', cooldownUntilTick: tick + IDLE_COOLDOWN_TICKS };
   }
-  // goal.kind === 'talk'
   const target = state.agents[goal.targetId];
-  if (!target || target.activity.kind === 'talking' || chebyshev(agent.pos, target.pos) > TALK_TRIGGER_RADIUS) {
+  if (!target || chebyshev(agent.pos, target.pos) > TALK_TRIGGER_RADIUS) {
     return { kind: 'idle', cooldownUntilTick: tick + IDLE_COOLDOWN_TICKS };
   }
-  target.activity = { kind: 'talking', withAgentId: agent.id };
-  pending.push({ aId: agent.id, bId: target.id });
-  return { kind: 'talking', withAgentId: target.id };
+
+  if (target.activity.kind === 'talking') {
+    const conv = state.activeConversations[target.activity.conversationId];
+    if (!conv || conv.participantIds.length >= MAX_GROUP_SIZE || conv.participantIds.includes(agent.id)) {
+      return { kind: 'idle', cooldownUntilTick: tick + IDLE_COOLDOWN_TICKS };
+    }
+    conv.participantIds.push(agent.id);
+    conv.participantLabels.push(agent.label);
+    return { kind: 'talking', conversationId: conv.id };
+  }
+
+  if (target.activity.kind !== 'idle') {
+    return { kind: 'idle', cooldownUntilTick: tick + IDLE_COOLDOWN_TICKS };
+  }
+
+  const conversationId = makeConversationId();
+  state.activeConversations[conversationId] = {
+    id: conversationId,
+    participantIds: [agent.id, target.id],
+    participantLabels: [agent.label, target.label],
+    lines: [],
+    startedTick: tick,
+  };
+  target.activity = { kind: 'talking', conversationId };
+  pending.push(conversationId);
+  return { kind: 'talking', conversationId };
 }
 
-function destinationForDirection(world: SimState['world'], from: Vec2, direction: Direction): Vec2 {
+function destinationForDirection(world: SimState['world'], agent: Agent, direction: Direction): Vec2 {
   if (direction === 'random') return randomTile(world);
   const delta: Record<Exclude<Direction, 'random'>, Vec2> = {
     north: { x: 0, y: -1 },
@@ -183,9 +215,10 @@ function destinationForDirection(world: SimState['world'], from: Vec2, direction
     west: { x: -1, y: 0 },
   };
   const d = delta[direction];
+  const step = moveStepFor(agent);
   return {
-    x: Math.max(0, Math.min(world.width - 1, from.x + d.x * MOVE_STEP)),
-    y: Math.max(0, Math.min(world.height - 1, from.y + d.y * MOVE_STEP)),
+    x: Math.max(0, Math.min(world.width - 1, agent.pos.x + d.x * step)),
+    y: Math.max(0, Math.min(world.height - 1, agent.pos.y + d.y * step)),
   };
 }
 
@@ -219,7 +252,7 @@ async function requestPlan(agentId: string): Promise<void> {
 
     switch (intent.kind) {
       case 'move': {
-        const dest = destinationForDirection(state.world, a.pos, intent.direction);
+        const dest = destinationForDirection(state.world, a, intent.direction);
         const path = findPath(state.world, a.pos, dest);
         if (path.length === 0) {
           a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
@@ -274,9 +307,10 @@ async function requestPlan(agentId: string): Promise<void> {
       }
       case 'satisfy_need': {
         const zone = zoneAt(state.zones, a.pos);
-        const fits =
+        const kindFits =
           (intent.need === 'energy' && zone?.kind === 'house') || (intent.need === 'fun' && zone?.kind === 'park');
-        if (fits && zone) {
+        const houseAllowed = !zone || zone.kind !== 'house' || !zone.ownerId || zone.ownerId === a.id;
+        if (kindFits && zone && houseAllowed) {
           const restore = intent.need === 'energy' ? REST_RESTORE : FUN_RESTORE;
           a.needs[intent.need] = clamp100(a.needs[intent.need] + restore);
           addMemory(
@@ -287,6 +321,8 @@ async function requestPlan(agentId: string): Promise<void> {
               ? `You rested at ${zone.name}, restoring energy.`
               : `You had fun at ${zone.name}.`,
           );
+        } else if (kindFits && zone) {
+          addMemory(a, now, 'need', `You tried to rest at ${zone.name}, but it's owned by ${zone.ownerLabel}.`);
         } else {
           addMemory(
             a,
@@ -309,6 +345,26 @@ async function requestPlan(agentId: string): Promise<void> {
           addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.`);
         } else {
           addMemory(a, now, 'bought', `You tried to buy food, but there's nowhere selling it here.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'buy_house': {
+        const zone = zoneAt(state.zones, a.pos);
+        if (zone && zone.kind === 'house' && !zone.ownerId) {
+          if (a.wallet >= HOUSE_PRICE) {
+            a.wallet -= HOUSE_PRICE;
+            zone.ownerId = a.id;
+            zone.ownerLabel = a.label;
+            addMemory(a, now, 'bought', `You bought ${zone.name} for $${HOUSE_PRICE}. It's yours now.`);
+            pushLogEntry(state, { tick: now, text: `${a.label} bought ${zone.name}`, kind: 'event' });
+          } else {
+            addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but didn't have enough money.`);
+          }
+        } else if (zone && zone.kind === 'house') {
+          addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but it's already owned by ${zone.ownerLabel}.`);
+        } else {
+          addMemory(a, now, 'bought', `You tried to buy a house, but there's nowhere to buy one here.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
@@ -354,52 +410,82 @@ async function requestPlan(agentId: string): Promise<void> {
   });
 }
 
-function applyRelationshipUpdate(agent: Agent, other: Agent, resp: ConversationTurnResponse, tick: number): void {
+function applyRelationshipUpdate(agent: Agent, others: Agent[], resp: ConversationTurnResponse, tick: number): void {
   if (resp.affinityDelta === undefined && !resp.relationshipLabel) return;
-  const existing = agent.relationships[other.id];
+  let target = others.length === 1 ? others[0] : undefined;
+  if (!target && resp.about) {
+    const wanted = resp.about.trim().toLowerCase();
+    target = others.find((o) => o.label.toLowerCase() === wanted);
+  }
+  if (!target) return; // ambiguous in a group with no clear "about" — skip rather than guess wrong
+
+  const existing = agent.relationships[target.id];
   const affinity = Math.max(
     -100,
     Math.min(100, (existing?.affinity ?? 0) + (typeof resp.affinityDelta === 'number' ? resp.affinityDelta : 0)),
   );
   const label = resp.relationshipLabel?.trim() || existing?.label || 'a stranger';
-  agent.relationships[other.id] = { otherId: other.id, otherLabel: other.label, affinity, label, updatedTick: tick };
-  addMemory(agent, tick, 'relationship', `You now think of ${other.label} as: "${label}" (affinity ${affinity}).`);
+  agent.relationships[target.id] = { otherId: target.id, otherLabel: target.label, affinity, label, updatedTick: tick };
+  addMemory(agent, tick, 'relationship', `You now think of ${target.label} as: "${label}" (affinity ${affinity}).`);
 }
 
-async function runConversation(aId: string, bId: string): Promise<void> {
-  const initial = useSimStore.getState();
-  const aLabel = initial.agents[aId]?.label ?? aId;
-  const bLabel = initial.agents[bId]?.label ?? bId;
-  const conversationId = makeConversationId();
-
+/** Removes one participant from a conversation (they left, or never had a model to speak
+ *  with) — the conversation itself keeps going for whoever's left, if anyone still is. */
+function leaveConversation(conversationId: string, agentId: string): void {
   useSimStore.getState().mutate((state) => {
-    state.activeConversations[conversationId] = {
-      id: conversationId,
-      participantIds: [aId, bId],
-      participantLabels: [aLabel, bLabel],
-      lines: [],
-      startedTick: state.clock.tick,
-    };
+    const now = state.clock.tick;
+    const a = state.agents[agentId];
+    if (a && a.activity.kind === 'talking' && a.activity.conversationId === conversationId) {
+      a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+    }
+    const conv = state.activeConversations[conversationId];
+    if (conv) {
+      const idx = conv.participantIds.indexOf(agentId);
+      if (idx !== -1) {
+        conv.participantIds.splice(idx, 1);
+        conv.participantLabels.splice(idx, 1);
+      }
+    }
   });
+}
 
-  let speakerId = aId;
-  let listenerId = bId;
+/** Runs one conversation's turns round-robin among whoever's currently in it — which can grow
+ *  (someone walks up and joins) or shrink (someone leaves) while this loop is still running,
+ *  since both just mutate the shared `activeConversations[conversationId]` entry directly. */
+async function runConversation(conversationId: string): Promise<void> {
+  let order = useSimStore.getState().activeConversations[conversationId]?.participantIds.slice() ?? [];
   const transcript: TranscriptLine[] = [];
   // Tracks each participant's own consecutive silent turns — a model that keeps returning an
-  // empty message isn't "choosing" much of anything, and without this the other side just
-  // keeps monologuing at it for the full turn cap. This ends things once someone's clearly not
-  // engaging, without ever touching what either side actually says.
+  // empty message isn't "choosing" much of anything, and without this the rest of the group
+  // just keeps talking at it for the full turn cap. This lets that one person quietly drop out
+  // once they're clearly not engaging, without ending things for whoever's still talking.
   const silenceStreak: Record<string, number> = {};
 
   for (let turn = 0; turn < MAX_CONVERSATION_TURNS; turn++) {
     const state0 = useSimStore.getState();
-    const speaker = state0.agents[speakerId];
-    const listener = state0.agents[listenerId];
-    if (!speaker || !listener) break;
-    if (speaker.activity.kind !== 'talking' || listener.activity.kind !== 'talking') break;
-    if (!speaker.model) break;
+    const conv = state0.activeConversations[conversationId];
+    if (!conv) break;
 
-    const { system, user } = buildConversationTurnPrompt(speaker, listener, transcript);
+    for (const id of conv.participantIds) if (!order.includes(id)) order.push(id);
+    order = order.filter((id) => conv.participantIds.includes(id));
+    if (order.length < 2) break;
+
+    const speakerId = order[turn % order.length];
+    const speaker = state0.agents[speakerId];
+
+    if (!speaker || speaker.activity.kind !== 'talking' || speaker.activity.conversationId !== conversationId || !speaker.model) {
+      leaveConversation(conversationId, speakerId);
+      order = order.filter((id) => id !== speakerId);
+      continue;
+    }
+
+    const others = order
+      .filter((id) => id !== speakerId)
+      .map((id) => state0.agents[id])
+      .filter((a): a is Agent => !!a);
+    if (others.length === 0) break;
+
+    const { system, user } = buildConversationTurnPrompt(speaker, others, transcript);
     const resp = await chatJSON<ConversationTurnResponse>(
       agentSettings(state0.settings, speaker),
       { system, user, schema: CONVERSATION_TURN_SCHEMA },
@@ -408,44 +494,53 @@ async function runConversation(aId: string, bId: string): Promise<void> {
 
     const message = (resp.message ?? '').trim();
     silenceStreak[speakerId] = message ? 0 : (silenceStreak[speakerId] ?? 0) + 1;
+
     if (message) {
       transcript.push({ speakerLabel: speaker.label, text: message });
+      const othersLabel = others.map((o) => o.label).join(', ');
       useSimStore.getState().mutate((state) => {
         const sp = state.agents[speakerId];
-        const li = state.agents[listenerId];
         const now = state.clock.tick;
         if (sp) {
           sp.speech = { text: message.slice(0, 200), expiresAtTick: now + 4 };
-          addMemory(sp, now, 'said', `You said to ${listener.label}: "${message}"`);
+          addMemory(sp, now, 'said', `You said to ${othersLabel}: "${message}"`);
           boostSocial(sp, SOCIAL_PER_TURN);
         }
-        if (li) {
-          addMemory(li, now, 'heard', `${speaker.label} said to you: "${message}"`);
-          boostSocial(li, SOCIAL_PER_TURN);
+        for (const o of others) {
+          const li = state.agents[o.id];
+          if (li) {
+            addMemory(li, now, 'heard', `${speaker.label} said to ${others.length > 1 ? 'the group' : 'you'}: "${message}"`);
+            boostSocial(li, SOCIAL_PER_TURN);
+          }
         }
         pushLogEntry(state, {
           tick: now,
           text: message,
           kind: 'conversation',
           speakerLabel: speaker.label,
-          listenerLabel: listener.label,
+          listenerLabel: othersLabel,
         });
         state.activeConversations[conversationId]?.lines.push({ speakerLabel: speaker.label, text: message, tick: now });
-        if (sp && li) applyRelationshipUpdate(sp, li, resp, now);
+        if (sp) applyRelationshipUpdate(sp, others, resp, now);
       });
     }
 
-    if (resp.end) break;
-    if (silenceStreak[speakerId] >= 2) break;
-    [speakerId, listenerId] = [listenerId, speakerId];
+    if (resp.end || silenceStreak[speakerId] >= 2) {
+      leaveConversation(conversationId, speakerId);
+      order = order.filter((id) => id !== speakerId);
+      if (order.length < 2) break;
+    }
   }
 
   useSimStore.getState().mutate((state) => {
     const now = state.clock.tick;
-    const a = state.agents[aId];
-    const b = state.agents[bId];
-    if (a && a.activity.kind === 'talking') a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
-    if (b && b.activity.kind === 'talking') b.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+    const conv = state.activeConversations[conversationId];
+    for (const id of conv?.participantIds ?? []) {
+      const a = state.agents[id];
+      if (a && a.activity.kind === 'talking' && a.activity.conversationId === conversationId) {
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+      }
+    }
     delete state.activeConversations[conversationId];
   });
 }
