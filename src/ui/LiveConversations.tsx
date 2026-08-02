@@ -10,14 +10,14 @@ function ConversationCard({ conversation }: { conversation: ActiveConversation }
   }, [conversation.lines.length]);
 
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-1.5 rounded-lg border border-sky-500/20 bg-sky-500/5 p-2.5">
-      <div className="text-xs font-semibold text-sky-300">{conversation.participantLabels.join(' ↔ ')}</div>
-      <div className="flex max-h-40 flex-col gap-1 overflow-y-auto pr-1 text-xs">
+    <div className="flex h-48 w-72 shrink-0 flex-col gap-1.5 rounded-lg border border-sky-500/30 bg-slate-900 p-2.5 shadow-inner">
+      <div className="shrink-0 text-xs font-semibold text-sky-300">{conversation.participantLabels.join(' ↔ ')}</div>
+      <div className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1 text-xs">
         {conversation.lines.length === 0 && <p className="text-white/40">…</p>}
         {conversation.lines.map((line, i) => (
           <div key={i}>
-            <span className="font-medium text-white/70">{line.speakerLabel}:</span>{' '}
-            <span className="text-white/60">{line.text}</span>
+            <span className="font-medium text-white/90">{line.speakerLabel}:</span>{' '}
+            <span className="text-white/70">{line.text}</span>
           </div>
         ))}
         <div ref={endRef} />
