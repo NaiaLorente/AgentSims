@@ -1,5 +1,5 @@
 import { useSimStore, makeLogId, type SimState } from '../state/simStore';
-import type { Agent, Direction, LogEntry, ModelStats, Vec2, WalkGoal } from './types';
+import { WORSE_OFF_THRESHOLD, type Agent, type Direction, type LogEntry, type ModelStats, type Vec2, type WalkGoal } from './types';
 import { findPath } from './pathfinding';
 import { randomTile } from './world';
 import { addMemory, makeMemoryId } from './memory';
@@ -43,6 +43,14 @@ const HOUSE_PRICE = 50;
 const WORK_PAY = 4;
 const SOCIAL_PER_TURN = 3;
 
+// Condition is the "sustained neglect" layer, separate from the moment-to-moment needs above —
+// it only moves while hunger or energy sits in critical territory, and moves back up slower than
+// it falls, so a single meal or nap doesn't erase a long stretch of neglect.
+const CONDITION_CRITICAL_NEED = 15;
+const CONDITION_HEALTHY_NEED = 50;
+const CONDITION_DECAY_PER_TICK = 0.25;
+const CONDITION_RECOVER_PER_TICK = 0.08;
+
 let conversationCounter = 0;
 function makeConversationId(): string {
   conversationCounter += 1;
@@ -80,12 +88,52 @@ function boostSocial(agent: Agent, amount: number): void {
   agent.needs.social = clamp100(agent.needs.social + amount);
 }
 
+/** The real, lasting consequence of sustained neglect. Only moves while hunger or energy is
+ *  critical (decay) or both are healthy (slow recovery) — brief dips do nothing here, only a
+ *  sustained stretch does. Crossing WORSE_OFF_THRESHOLD is logged in the agent's own memory;
+ *  bottoming out at 0 repossesses any house it owns, back to unowned for anyone to buy. */
+function updateCondition(state: SimState, agent: Agent, tick: number): void {
+  const n = agent.needs;
+  const before = agent.condition;
+  const critical = n.hunger < CONDITION_CRITICAL_NEED || n.energy < CONDITION_CRITICAL_NEED;
+  const healthy = n.hunger >= CONDITION_HEALTHY_NEED && n.energy >= CONDITION_HEALTHY_NEED;
+  if (critical) {
+    agent.condition = clamp100(agent.condition - CONDITION_DECAY_PER_TICK);
+  } else if (healthy) {
+    agent.condition = clamp100(agent.condition + CONDITION_RECOVER_PER_TICK);
+  }
+
+  if (before >= WORSE_OFF_THRESHOLD && agent.condition < WORSE_OFF_THRESHOLD) {
+    addMemory(agent, tick, 'need', 'Going this long without eating or resting is wearing you down — you look visibly worse off.');
+  } else if (before < WORSE_OFF_THRESHOLD && agent.condition >= WORSE_OFF_THRESHOLD) {
+    addMemory(agent, tick, 'need', "Taking care of yourself is paying off — you're looking better.");
+  }
+
+  if (before > 0 && agent.condition <= 0) {
+    const owned = state.zones.filter((z) => z.ownerId === agent.id);
+    if (owned.length > 0) {
+      for (const zone of owned) {
+        zone.ownerId = null;
+        zone.ownerLabel = null;
+        addMemory(agent, tick, 'need', `You couldn't keep it together, and lost ${zone.name}.`);
+        pushLogEntry(state, { tick, text: `${agent.label} lost ${zone.name} after prolonged neglect`, kind: 'event' });
+        if (agent.model) {
+          const s = statsFor(state, agent.model);
+          s.housesLost = (s.housesLost ?? 0) + 1;
+        }
+      }
+    } else {
+      addMemory(agent, tick, 'need', 'Prolonged neglect has hit you as hard as it can.');
+    }
+  }
+}
+
 /** Cumulative per-model stats, tagged with whichever model actually did the thing (not the
  *  agent slot), so the comparison dashboard stays correct even if models get reassigned mid-run. */
 function statsFor(state: SimState, model: string): ModelStats {
   let s = state.modelStats[model];
   if (!s) {
-    s = { model, actionCounts: {}, messagesSpoken: 0, moneyEarned: 0, moneySpent: 0, moneyGiven: 0, moneyReceived: 0 };
+    s = { model, actionCounts: {}, messagesSpoken: 0, moneyEarned: 0, moneySpent: 0, moneyGiven: 0, moneyReceived: 0, housesLost: 0 };
     state.modelStats[model] = s;
   }
   return s;
@@ -153,6 +201,7 @@ async function runTick(): Promise<void> {
       const agent = state.agents[id];
       if (!agent) continue;
       decayNeeds(agent);
+      updateCondition(state, agent, tick);
       stepAgent(state, agent, tick, pendingConversations);
     }
   });

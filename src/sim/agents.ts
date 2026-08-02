@@ -65,6 +65,7 @@ export function createAgentFromConfig(config: AgentConfig, world: World, index: 
     lastReflectionTick: 0,
     speech: null,
     needs: { hunger: STARTING_NEED, energy: STARTING_NEED, social: STARTING_NEED, fun: STARTING_NEED },
+    condition: 100,
     wallet: STARTING_WALLET,
     roles: [],
     relationships: {},

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSimStore } from '../state/simStore';
-import type { Agent, World, Zone } from '../sim/types';
+import { WORSE_OFF_THRESHOLD, type Agent, type World, type Zone } from '../sim/types';
 
 const TILE = 32;
 const MIN_SCALE = 0.6;
@@ -189,7 +189,8 @@ function drawAgent(
 ) {
   const bodyW = TILE * 0.5;
   const bodyH = TILE * 0.62;
-  const color = agent.model ? agent.color : '#525a66';
+  const worseOff = agent.condition < WORSE_OFF_THRESHOLD;
+  const color = agent.model ? (worseOff ? shade(agent.color, -35) : agent.color) : '#525a66';
   const bob = s.moving ? Math.sin(s.walkPhase * 2) * 1.6 : 0;
   const top = cy - bodyH / 2 + bob;
 

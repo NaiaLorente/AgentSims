@@ -79,6 +79,11 @@ export interface Relationship {
   updatedTick: number;
 }
 
+/** Below this, an agent's condition counts as "worse off" — visible on the canvas and in the
+ *  inspector, and mentioned in its own memory. Shared by the sim loop and UI so there's one
+ *  source of truth for the cutoff. */
+export const WORSE_OFF_THRESHOLD = 40;
+
 export interface Needs {
   hunger: number; // 0..100, 100 = fully satisfied
   energy: number;
@@ -117,6 +122,11 @@ export interface Agent {
   lastReflectionTick: number;
   speech: SpeechBubble | null;
   needs: Needs;
+  /** 0..100, 100 = fine. Unlike the needs above, this doesn't decay every tick on its own — it
+   *  only erodes while hunger or energy has been critically low for a while, and recovers slower
+   *  than it falls. Real, lasting stakes for sustained neglect, on top of the moment-to-moment
+   *  needs slowdown: visible degradation, and repossession of any house owned if it bottoms out. */
+  condition: number;
   wallet: number;
   roles: AgentRole[];
   relationships: Record<string, Relationship>; // keyed by other agent's id
@@ -167,6 +177,8 @@ export interface ModelStats {
   moneySpent: number;
   moneyGiven: number;
   moneyReceived: number;
+  /** Houses repossessed after an agent's condition bottomed out from sustained neglect. */
+  housesLost: number;
 }
 
 /** One point in a relationship's affinity-over-time history, recorded whenever it actually

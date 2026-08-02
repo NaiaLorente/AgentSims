@@ -1,6 +1,6 @@
 import { useSimStore } from '../state/simStore';
 import { recentMemories } from '../sim/memory';
-import type { Agent } from '../sim/types';
+import { WORSE_OFF_THRESHOLD, type Agent } from '../sim/types';
 
 function activityLabel(kind: string): string {
   switch (kind) {
@@ -64,6 +64,31 @@ function NeedsBars({ needs }: { needs: Agent['needs'] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** The lasting-stakes stat, separate from the needs above — only moves from sustained neglect,
+ *  not a momentary dip, so it stays flat most of the time and is worth calling out when it isn't. */
+function conditionHint(value: number): string | null {
+  if (value <= 0) return 'hit rock bottom — any house owned is at risk';
+  if (value < WORSE_OFF_THRESHOLD) return 'visibly worn down from neglect';
+  return null;
+}
+
+function ConditionBar({ value }: { value: number }) {
+  const hint = conditionHint(value);
+  return (
+    <div className="flex items-center gap-2 text-[11px]">
+      <span className="w-12 shrink-0 text-white/50">Condition</span>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full transition-[width]"
+          style={{ width: `${Math.round(value)}%`, backgroundColor: needBarColor(value) }}
+        />
+      </div>
+      <span className="w-8 shrink-0 text-right text-white/40">{Math.round(value)}</span>
+      {hint && <span className="shrink-0 text-orange-400/70">{hint}</span>}
     </div>
   );
 }
@@ -144,6 +169,9 @@ export function AgentInspector() {
           <div>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Status</h3>
             <NeedsBars needs={agent.needs} />
+            <div className="mt-1.5 border-t border-white/10 pt-1.5">
+              <ConditionBar value={agent.condition} />
+            </div>
           </div>
 
           <div>

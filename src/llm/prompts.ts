@@ -1,4 +1,4 @@
-import type { Agent, AgentIntent, Zone } from '../sim/types';
+import { WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Zone } from '../sim/types';
 import { formatMemoriesForPrompt } from '../sim/memory';
 
 // ---------------------------------------------------------------------------
@@ -82,7 +82,11 @@ function describeSelf(agent: Agent): string {
   const n = agent.needs;
   const needsLine = `hunger: ${Math.round(n.hunger)}/100 (${needStatus(n.hunger)}), energy: ${Math.round(n.energy)}/100 (${needStatus(n.energy)}), social: ${Math.round(n.social)}/100 (${needStatus(n.social)}), fun: ${Math.round(n.fun)}/100 (${needStatus(n.fun)})`;
   const roles = agent.roles.length === 0 ? 'none' : agent.roles.map((r) => `"${r.title}" at ${r.zoneId}`).join(', ');
-  return `Right now: ${needsLine}. Money: $${agent.wallet}. Roles you've claimed: ${roles}.`;
+  const conditionNote =
+    agent.condition < WORSE_OFF_THRESHOLD
+      ? ` Condition: ${Math.round(agent.condition)}/100 — you're visibly worn down from going too long without eating or resting.`
+      : '';
+  return `Right now: ${needsLine}. Money: $${agent.wallet}. Roles you've claimed: ${roles}.${conditionNote}`;
 }
 
 function describeRelationships(agent: Agent): string {
@@ -114,7 +118,7 @@ You can:
 - work, if you're standing at the place where you hold a job — earns money
 - do nothing
 
-Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it.
+Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it. Going a long stretch without eating or resting has a lasting cost on top of that: you'll visibly decline, and if it goes on long enough you can lose a house you own.
 
 Respond ONLY with JSON of this shape:
 {"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), or "give_money" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;

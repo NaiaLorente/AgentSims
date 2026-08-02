@@ -40,6 +40,9 @@ function ModelCard({ stats, agentLabels }: { stats: ModelStats; agentLabels: str
         <div>
           Given: <span className="text-sky-400/80">${stats.moneyGiven}</span>
         </div>
+        <div>
+          Houses lost: <span className="text-red-400/80">{stats.housesLost}</span>
+        </div>
       </div>
 
       {topActions.length > 0 && (

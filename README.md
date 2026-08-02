@@ -93,6 +93,18 @@ Most browsers exempt `localhost`, but if yours doesn't:
   far a single deliberate move actually gets it. Energy is restored by
   resting at a house it owns, fun by spending time at the park, hunger by
   buying food, and social by simply talking to people.
+- **Sustained neglect has real stakes, not just a slowdown.** The needs
+  above never block anything and self-correct the moment you act on them —
+  but an agent that leaves hunger or energy critically low for a long
+  stretch also drains a separate **condition** stat, visible in its
+  inspector, that doesn't bounce back the instant a single need does.
+  Below a threshold it's visibly worse off — a darker sprite on the canvas,
+  a note in its own memory — and if condition bottoms out entirely while it
+  owns a house, that house is repossessed, back to unowned for anyone to
+  buy, logged as an event. Condition recovers noticeably slower than it
+  falls, so running yourself into the ground can't be undone with a single
+  meal. The **Model comparison** dashboard tracks how many houses each
+  model's agents have lost this way.
 - **Jobs, houses, and money**: an agent can claim a job title anywhere, in
   its own words (a title it makes up, not picked from a list) — but only
   while actually standing at that place, and nothing stops two agents from
