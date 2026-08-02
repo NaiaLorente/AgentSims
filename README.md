@@ -101,6 +101,11 @@ Most browsers exempt `localhost`, but if yours doesn't:
   outright, and buying one is exclusive — once an agent owns a house, only
   they can rest there, so money and shelter actually matter to what an agent
   can do next. It's a real, if small, economy — entirely opt-in.
+- **Money moves between agents, too.** Any agent can hand some of its own
+  money to someone standing right next to it, however much it chooses —
+  nothing about who gets what or why is suggested. That's the only lever
+  needed for hoarding, generosity, or one agent bankrolling another's house
+  to all be genuinely possible outcomes, not something scripted in.
 - **Politics, informally.** There's no election system or ranking — "leader
   of the park," "shopkeeper," or anything else is just a role an agent
   declares for itself the same way a job is claimed. Conflicting claims,

@@ -35,7 +35,8 @@ export type MemoryKind =
   | 'need' // satisfied hunger/energy/fun
   | 'bought' // spent money on food
   | 'relationship' // how it feels about another agent changed
-  | 'reflection'; // a higher-level takeaway synthesized from raw memory, not a single event
+  | 'reflection' // a higher-level takeaway synthesized from raw memory, not a single event
+  | 'gave'; // money changed hands with another agent
 
 export interface MemoryEvent {
   id: string;
@@ -54,6 +55,7 @@ export type AgentIntent =
   | { kind: 'satisfy_need'; need: 'energy' | 'fun' }
   | { kind: 'buy_food' }
   | { kind: 'buy_house' }
+  | { kind: 'give_money'; targetId: string; amount: number }
   | { kind: 'take_job'; title: string }
   | { kind: 'work' }
   | { kind: 'wait' };

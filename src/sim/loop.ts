@@ -399,6 +399,27 @@ async function requestPlan(agentId: string): Promise<void> {
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
       }
+      case 'give_money': {
+        const target = state.agents[intent.targetId];
+        if (!target) {
+          addMemory(a, now, 'gave', `You tried to give money, but couldn't find who you meant.`);
+        } else if (chebyshev(a.pos, target.pos) > TALK_TRIGGER_RADIUS) {
+          addMemory(a, now, 'gave', `You tried to give money to ${target.label}, but they weren't close enough.`);
+        } else {
+          const amount = Math.min(intent.amount, a.wallet);
+          if (amount > 0) {
+            a.wallet -= amount;
+            target.wallet += amount;
+            addMemory(a, now, 'gave', `You gave $${amount} to ${target.label}.`);
+            addMemory(target, now, 'gave', `${a.label} gave you $${amount}.`);
+            pushLogEntry(state, { tick: now, text: `${a.label} gave $${amount} to ${target.label}`, kind: 'event' });
+          } else {
+            addMemory(a, now, 'gave', `You tried to give money to ${target.label}, but didn't have any to give.`);
+          }
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
       case 'take_job': {
         const zone = zoneAt(state.zones, a.pos);
         if (zone) {

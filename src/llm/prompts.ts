@@ -14,12 +14,25 @@ export const PLANNER_SCHEMA = {
   properties: {
     action: {
       type: 'string',
-      enum: ['move', 'go_to', 'talk_to', 'say', 'satisfy_need', 'buy_food', 'buy_house', 'take_job', 'work', 'wait'],
+      enum: [
+        'move',
+        'go_to',
+        'talk_to',
+        'say',
+        'satisfy_need',
+        'buy_food',
+        'buy_house',
+        'give_money',
+        'take_job',
+        'work',
+        'wait',
+      ],
     },
     direction: { type: 'string', enum: ['north', 'south', 'east', 'west', 'random'] },
     targetId: { type: 'string' },
     message: { type: 'string' },
     need: { type: 'string', enum: ['energy', 'fun'] },
+    amount: { type: 'number' },
     title: { type: 'string' },
     thought: { type: 'string' },
   },
@@ -32,6 +45,7 @@ export interface PlannerResponse {
   targetId?: string;
   message?: string;
   need?: string;
+  amount?: number;
   title?: string;
   thought?: string;
 }
@@ -95,6 +109,7 @@ You can:
 - rest to restore energy, or have fun, if you're standing at a place suited for it — pick which need
 - buy food, if you're standing at a place that sells it — costs money, restores hunger
 - buy a house, if you're standing at one that's unowned — costs money, makes it yours; only you can rest there afterward
+- give some of your money to someone nearby, however much you choose, if you want to
 - take a job or role somewhere, in your own words (a title you make up) — only takes effect if you're standing at the place right now
 - work, if you're standing at the place where you hold a job — earns money
 - do nothing
@@ -102,7 +117,7 @@ You can:
 Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it.
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "take_job" | "work" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list) or "talk_to" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), or "give_money" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -154,6 +169,13 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>, 
       return { kind: 'buy_food' };
     case 'buy_house':
       return { kind: 'buy_house' };
+    case 'give_money': {
+      const amount = typeof resp.amount === 'number' ? Math.floor(resp.amount) : 0;
+      if (resp.targetId && validTargetIds.has(resp.targetId) && amount > 0) {
+        return { kind: 'give_money', targetId: resp.targetId, amount };
+      }
+      return { kind: 'wait' };
+    }
     case 'take_job': {
       const title = (resp.title ?? '').trim().slice(0, 80);
       if (!title) return { kind: 'wait' };
