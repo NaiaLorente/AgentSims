@@ -129,7 +129,12 @@ Most browsers exempt `localhost`, but if yours doesn't:
   nearby agent, say something out loud, rest, have fun, buy food, buy a
   house, claim a role, work, or do nothing — via a minimal JSON action
   schema. That schema is the only "instruction" involved; it describes
-  what's mechanically possible, not what the agent should want. The prompts
+  what's mechanically possible, not what the agent should want. Every
+  planning prompt also states plainly which place, if any, the agent is
+  currently standing in — since several actions (resting, buying, working)
+  only succeed there, leaving that to be inferred from memory alone was
+  producing agents stuck repeating a failed action because an earlier walk
+  there hadn't actually landed. The prompts
   never mention AI, models, or "free will" as a concept — telling an agent
   what it *is* just gets it talking about that instead of acting, so it's
   only ever told what it can do, in-world, first person. There is no

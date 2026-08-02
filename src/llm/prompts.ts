@@ -1,5 +1,6 @@
 import { WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Zone } from '../sim/types';
 import { formatMemoriesForPrompt } from '../sim/memory';
+import { zoneAt } from '../sim/zones';
 
 // ---------------------------------------------------------------------------
 // These prompts deliberately avoid any mention of AI, models, language
@@ -78,7 +79,7 @@ function needStatus(value: number): string {
   return 'low';
 }
 
-function describeSelf(agent: Agent): string {
+function describeSelf(agent: Agent, currentZone: Zone | undefined): string {
   const n = agent.needs;
   const needsLine = `hunger: ${Math.round(n.hunger)}/100 (${needStatus(n.hunger)}), energy: ${Math.round(n.energy)}/100 (${needStatus(n.energy)}), social: ${Math.round(n.social)}/100 (${needStatus(n.social)}), fun: ${Math.round(n.fun)}/100 (${needStatus(n.fun)})`;
   const roles = agent.roles.length === 0 ? 'none' : agent.roles.map((r) => `"${r.title}" at ${r.zoneId}`).join(', ');
@@ -86,7 +87,13 @@ function describeSelf(agent: Agent): string {
     agent.condition < WORSE_OFF_THRESHOLD
       ? ` Condition: ${Math.round(agent.condition)}/100 — you're visibly worn down from going too long without eating or resting.`
       : '';
-  return `Right now: ${needsLine}. Money: $${agent.wallet}. Roles you've claimed: ${roles}.${conditionNote}`;
+  // Actions gated on standing at a specific place (resting, buying, working) check this exact
+  // position server-side — spelling it out here stops the model from guessing whether an
+  // earlier "go to" actually landed, which otherwise shows up as repeated failed attempts.
+  const whereLine = currentZone
+    ? `You're currently at ${currentZone.name}.`
+    : "You're not standing at any particular place right now.";
+  return `Right now: ${needsLine}. Money: $${agent.wallet}. Roles you've claimed: ${roles}.${conditionNote} ${whereLine}`;
 }
 
 function describeRelationships(agent: Agent): string {
@@ -129,8 +136,9 @@ Respond ONLY with JSON of this shape:
       : nearbyAgents.map((other) => `- ${other.label} (id: "${other.id}")`).join('\n');
 
   const zonesBlock = `\n\nPlaces on the map:\n${zones.map(describeZone).join('\n')}`;
+  const currentZone = zoneAt(zones, agent.pos);
 
-  const user = `${describeSelf(agent)}${describeReflections(agent)}${describeRelationships(agent)}
+  const user = `${describeSelf(agent, currentZone)}${describeReflections(agent)}${describeRelationships(agent)}
 
 People nearby:
 ${nearbyDesc}${zonesBlock}
