@@ -156,7 +156,10 @@ Most browsers exempt `localhost`, but if yours doesn't:
   separate one, and anyone can leave whenever they choose without ending it
   for whoever's left — so what you see is genuinely each model's own voice,
   in a group that can grow or shrink while it's happening, not one model
-  writing every side.
+  writing every side. It also gets the same map info the planner does — the
+  same real places, by name and id — so a conversation that drifts onto
+  "where's House A?" has real facts to draw on instead of inventing
+  landmarks that don't exist, the way one long real run did before this.
 - **Relationships are remembered, not just implied by chat.** After any
   exchange, the speaking agent's own model can optionally update how it
   feels about the other person — a short label in its own words ("a close

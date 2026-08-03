@@ -74,6 +74,14 @@ function describeZone(zone: Zone): string {
   return `- ${zone.name} (id: "${zone.id}") — ${base}${ownership}`;
 }
 
+/** The one source of truth for "what places exist" — shared by the planner and conversation
+ *  prompts so an agent knows the same real map whether it's deciding what to do or just talking.
+ *  Without this in the conversation prompt, a chat that drifted onto "where's House A?" had
+ *  nothing real to draw on and invented landmarks instead of citing the map it already knows. */
+function describeZonesBlock(zones: Zone[]): string {
+  return `Places on the map:\n${zones.map(describeZone).join('\n')}`;
+}
+
 function needStatus(value: number): string {
   if (value >= 70) return 'fine';
   if (value >= 40) return 'could be better';
@@ -137,7 +145,7 @@ Respond ONLY with JSON of this shape:
       ? '(no one nearby right now)'
       : nearbyAgents.map((other) => `- ${other.label} (id: "${other.id}")`).join('\n');
 
-  const zonesBlock = `\n\nPlaces on the map:\n${zones.map(describeZone).join('\n')}`;
+  const zonesBlock = `\n\n${describeZonesBlock(zones)}`;
   const currentZone = zoneAt(zones, agent.pos);
 
   const user = `${describeSelf(agent, currentZone)}${describeReflections(agent)}${describeRelationships(agent)}
@@ -250,6 +258,7 @@ export function buildConversationTurnPrompt(
   speaker: Agent,
   others: Agent[],
   transcript: TranscriptLine[],
+  zones: Zone[],
 ): { system: string; user: string } {
   const otherNames = others.map((o) => o.label);
   const groupDesc =
@@ -288,7 +297,9 @@ Respond ONLY with JSON of this shape:
       ? '(Nothing said yet this time.)'
       : transcript.map((line) => `${line.speakerLabel}: ${line.text}`).join('\n');
 
-  const user = `${relationshipBlock}${historyBlock}Right now:
+  const user = `${relationshipBlock}${historyBlock}${describeZonesBlock(zones)}
+
+Right now:
 ${transcriptText}
 
 Your turn.`;

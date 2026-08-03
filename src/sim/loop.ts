@@ -751,7 +751,7 @@ async function runConversation(conversationId: string): Promise<void> {
       .filter((a): a is Agent => !!a);
     if (others.length === 0) break;
 
-    const { system, user } = buildConversationTurnPrompt(speaker, others, transcript);
+    const { system, user } = buildConversationTurnPrompt(speaker, others, transcript, state0.zones);
     const resp = await chatJSON<ConversationTurnResponse>(
       agentSettings(state0.settings, speaker),
       { system, user, schema: CONVERSATION_TURN_SCHEMA },
