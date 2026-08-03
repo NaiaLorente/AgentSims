@@ -163,6 +163,10 @@ export interface Agent {
    *  than it falls. Real, lasting stakes for sustained neglect, on top of the moment-to-moment
    *  needs slowdown: visible degradation, and repossession of any house owned if it bottoms out. */
   condition: number;
+  /** Consecutive ticks condition has sat at 0 — resets the instant it rises above 0. Crossing a
+   *  sustained threshold here is what actually removes the agent (see COLLAPSE_AFTER_ZERO_TICKS
+   *  in loop.ts); a brief dip to 0 that recovers does nothing on its own. */
+  conditionZeroTicks: number;
   wallet: number;
   roles: AgentRole[];
   relationships: Record<string, Relationship>; // keyed by other agent's id
@@ -224,6 +228,9 @@ export interface ModelStats {
   moneyReceived: number;
   /** Houses repossessed after an agent's condition bottomed out from sustained neglect. */
   housesLost: number;
+  /** Agents actually removed for good after sitting at 0 condition too long — real elimination,
+   *  not just a house lost. */
+  collapses: number;
 }
 
 /** One point in a relationship's affinity-over-time history, recorded whenever it actually

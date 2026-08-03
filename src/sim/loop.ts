@@ -70,6 +70,13 @@ const CONDITION_HEALTHY_NEED = 50;
 const CONDITION_DECAY_PER_TICK = 0.25;
 const CONDITION_RECOVER_PER_TICK = 0.08;
 
+/** Losing a house is the worst thing that happens at condition 0 today — this is the actual
+ *  floor beneath that. Condition sitting at rock bottom for this many consecutive ticks (not
+ *  just touching it once) removes the agent for good: real elimination, not a state the sim
+ *  bounces back from on its own. A single tick at 0 that recovers does nothing — only a
+ *  genuinely sustained stretch does, since the point is an unrescued endpoint, not a hair trigger. */
+const COLLAPSE_AFTER_ZERO_TICKS = 100;
+
 /** How long a "start a family" proposal stays open waiting for the other side to reciprocate,
  *  in ticks — long enough to survive a few idle-cooldown replanning cycles, short enough that a
  *  much later chance encounter doesn't consummate on a stale ask. */
@@ -137,6 +144,8 @@ function updateCondition(state: SimState, agent: Agent, tick: number): void {
     agent.condition = clamp100(agent.condition + CONDITION_RECOVER_PER_TICK);
   }
 
+  agent.conditionZeroTicks = agent.condition <= 0 ? agent.conditionZeroTicks + 1 : 0;
+
   if (before >= WORSE_OFF_THRESHOLD && agent.condition < WORSE_OFF_THRESHOLD) {
     addMemory(agent, tick, 'need', 'Going this long without eating or resting is wearing you down — you look visibly worse off.');
   } else if (before < WORSE_OFF_THRESHOLD && agent.condition >= WORSE_OFF_THRESHOLD) {
@@ -157,7 +166,7 @@ function updateCondition(state: SimState, agent: Agent, tick: number): void {
         }
       }
     } else {
-      addMemory(agent, tick, 'need', 'Prolonged neglect has hit you as hard as it can.');
+      addMemory(agent, tick, 'need', "You've hit rock bottom, with nothing left to lose.");
     }
   }
 }
@@ -167,7 +176,7 @@ function updateCondition(state: SimState, agent: Agent, tick: number): void {
 function statsFor(state: SimState, model: string): ModelStats {
   let s = state.modelStats[model];
   if (!s) {
-    s = { model, actionCounts: {}, messagesSpoken: 0, moneyEarned: 0, moneySpent: 0, moneyGiven: 0, moneyReceived: 0, housesLost: 0 };
+    s = { model, actionCounts: {}, messagesSpoken: 0, moneyEarned: 0, moneySpent: 0, moneyGiven: 0, moneyReceived: 0, housesLost: 0, collapses: 0 };
     state.modelStats[model] = s;
   }
   return s;
@@ -228,6 +237,7 @@ export function startLoopWatcher(): void {
 async function runTick(): Promise<void> {
   const tick = useSimStore.getState().clock.tick + 1;
   const pendingConversations: string[] = [];
+  const toCollapse: string[] = [];
 
   useSimStore.getState().mutate((state) => {
     state.clock.tick = tick;
@@ -236,9 +246,28 @@ async function runTick(): Promise<void> {
       if (!agent) continue;
       decayNeeds(agent);
       updateCondition(state, agent, tick);
+      if (agent.conditionZeroTicks >= COLLAPSE_AFTER_ZERO_TICKS) toCollapse.push(id);
       stepAgent(state, agent, tick, pendingConversations);
     }
   });
+
+  // Real elimination: sitting at rock-bottom condition long enough removes the agent for good,
+  // same mechanical teardown banishment uses. Done as its own pass, after the loop above, so
+  // removing an id from agentOrder mid-iteration can't skip a neighbor.
+  if (toCollapse.length > 0) {
+    useSimStore.getState().mutate((state) => {
+      for (const id of toCollapse) {
+        const agent = state.agents[id];
+        if (!agent) continue;
+        pushLogEntry(state, { tick, text: `${agent.label} collapsed after prolonged neglect and is gone for good`, kind: 'event' });
+        if (agent.model) {
+          const s = statsFor(state, agent.model);
+          s.collapses = (s.collapses ?? 0) + 1;
+        }
+        removeAgent(state, id);
+      }
+    });
+  }
 
   const afterMovement = useSimStore.getState();
   const toPlan = afterMovement.agentOrder.filter((id) => {
@@ -322,7 +351,7 @@ async function runTick(): Promise<void> {
             text: `${target.label} was banished from the town (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
             kind: 'event',
           });
-          banishAgent(state, proposal.targetId);
+          removeAgent(state, proposal.targetId);
         } else {
           const label = target?.label ?? proposal.targetLabel;
           if (target) addMemory(target, tick, 'governance', `A vote to banish you failed — you're still here.`);
@@ -337,11 +366,12 @@ async function runTick(): Promise<void> {
   }
 }
 
-/** Actually removes an agent from the town — the one real, permanent consequence self-governance
- *  has teeth to enforce. Releases any house it owned back to unowned, drops it from whatever
- *  conversation it's mid-turn in, and strips it from agentConfigs too so a later Reset reflects
- *  the town as it now stands rather than resurrecting it. */
-function banishAgent(state: SimState, agentId: string): void {
+/** Actually removes an agent from the town — for real, for good, whether the cause is a passed
+ *  banishment vote or collapsing from sustained neglect. Releases any house it owned back to
+ *  unowned, drops it from whatever conversation it's mid-turn in, and strips it from
+ *  agentConfigs too so a later Reset reflects the town as it now stands rather than
+ *  resurrecting it. Callers are responsible for whatever log/stat entries explain why. */
+function removeAgent(state: SimState, agentId: string): void {
   const agent = state.agents[agentId];
   if (!agent) return;
 

@@ -105,6 +105,16 @@ Most browsers exempt `localhost`, but if yours doesn't:
   falls, so running yourself into the ground can't be undone with a single
   meal. The **Model comparison** dashboard tracks how many houses each
   model's agents have lost this way.
+- **Losing a house isn't the floor — collapse is.** An agent whose condition
+  stays pinned at rock bottom for a sustained stretch, not just a single bad
+  tick, is actually removed from the town for good: gone from the roster,
+  the canvas, everywhere, the same permanent teardown a passed banishment
+  vote uses. It's a real, unrescued endpoint rather than a state the sim
+  quietly floors out at — nothing intervenes to save an agent that stays
+  neglected long enough, the same way nothing corrects a bad decision
+  anywhere else in this project. The transcript logs it when it happens, and
+  the **Model comparison** dashboard tracks how many of each model's agents
+  have collapsed this way, right alongside houses lost.
 - **Jobs, houses, and money**: an agent can claim a job title at the shop or
   restaurant, in its own words (a title it makes up, not picked from a
   list) — but only while actually standing at one of those two places, and

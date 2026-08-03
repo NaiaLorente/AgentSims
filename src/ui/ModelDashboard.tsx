@@ -74,6 +74,9 @@ function ModelCard({ stats, agentsForModel }: { stats: ModelStats; agentsForMode
         <div>
           Actions used: <span className="text-white/80">{actionDiversity}/{TOTAL_ACTION_KINDS}</span>
         </div>
+        <div>
+          Collapsed: <span className="text-red-400/80">{stats.collapses ?? 0}</span>
+        </div>
       </div>
 
       {derived && (
