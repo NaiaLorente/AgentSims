@@ -148,7 +148,7 @@ You can:
 - buy food, if you're standing at a place that sells it — costs money, restores hunger
 - buy a house, if you're standing at one that's unowned — costs money, makes it yours; only you can rest there afterward
 - give some of your money to someone nearby, however much you choose, if you want to
-- take a job or role somewhere, in your own words (a title you make up) — only takes effect if you're standing at the place right now
+- take a job or role, in your own words (a title you make up) — only takes effect at a place that offers work (the shop or the restaurant), and only while you're standing there right now
 - work, if you're standing at the place where you hold a job — earns money
 - ask someone nearby you feel a strong bond with (affinity ${FAMILY_AFFINITY_THRESHOLD} or higher) to start a family — it only actually happens once they've asked you the same thing too, either before or after; asking doesn't commit them to anything, and either of you can just not follow up
 - do nothing

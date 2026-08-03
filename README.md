@@ -110,11 +110,12 @@ Most browsers exempt `localhost`, but if yours doesn't:
   falls, so running yourself into the ground can't be undone with a single
   meal. The **Model comparison** dashboard tracks how many houses each
   model's agents have lost this way.
-- **Jobs, houses, and money**: an agent can claim a job title anywhere, in
-  its own words (a title it makes up, not picked from a list) — but only
-  while actually standing at that place, and nothing stops two agents from
-  claiming the same one. Holding a job at the shop or restaurant lets an
-  agent work there to earn money. Houses are different: they can be *bought*
+- **Jobs, houses, and money**: an agent can claim a job title at the shop or
+  restaurant, in its own words (a title it makes up, not picked from a
+  list) — but only while actually standing at one of those two places, and
+  nothing stops two agents from claiming the same one. Holding a job at the
+  shop or restaurant lets an agent work there to earn money. Houses are
+  different: they can be *bought*
   outright, and buying one is exclusive — once an agent owns a house, only
   they can rest there, so money and shelter actually matter to what an agent
   can do next. It's a real, if small, economy — entirely opt-in.

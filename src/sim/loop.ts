@@ -571,7 +571,8 @@ async function requestPlan(agentId: string): Promise<void> {
       }
       case 'take_job': {
         const zone = zoneAt(state.zones, a.pos);
-        if (zone) {
+        const canWork = zone && (zone.kind === 'shop' || zone.kind === 'restaurant');
+        if (canWork && zone) {
           const already = a.roles.some((r) => r.zoneId === zone.id && r.title === intent.title);
           if (!already) {
             a.roles.push({ zoneId: zone.id, title: intent.title, tick: now });
@@ -583,7 +584,8 @@ async function requestPlan(agentId: string): Promise<void> {
             });
           }
         } else {
-          addMemory(a, now, 'job', `You tried to claim a role, but there's nowhere here to claim it at.`);
+          const workplaces = state.zones.filter((z) => z.kind === 'shop' || z.kind === 'restaurant').map((z) => z.name);
+          addMemory(a, now, 'job', `You tried to claim a role, but there's nowhere here to claim it at.${whereForHint(workplaces)}`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
