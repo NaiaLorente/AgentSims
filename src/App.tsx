@@ -4,6 +4,10 @@ import { Controls } from './ui/Controls';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { AgentInspector } from './ui/AgentInspector';
 import { EventLog } from './ui/EventLog';
+import { ZonesPanel } from './ui/ZonesPanel';
+import { GovernancePanel } from './ui/GovernancePanel';
+import { LiveConversations } from './ui/LiveConversations';
+import { ModelDashboard } from './ui/ModelDashboard';
 import { startLoopWatcher } from './sim/loop';
 
 export default function App() {
@@ -16,7 +20,8 @@ export default function App() {
       <header>
         <h1 className="text-xl font-semibold">AgentSims</h1>
         <p className="text-xs text-white/50">
-          A handful of AI residents living their own lives — watch them wander, chat, and form relationships.
+          Several LLMs dropped into a shared town — houses, a shop, a restaurant, a park — with needs, jobs, and
+          relationships to manage, but total free will over what to actually do about any of it.
         </p>
       </header>
 
@@ -27,6 +32,7 @@ export default function App() {
           <div className="flex justify-center overflow-auto rounded-lg bg-black/20 p-3">
             <CanvasWorld />
           </div>
+          <LiveConversations />
           <div className="h-56">
             <EventLog />
           </div>
@@ -35,8 +41,12 @@ export default function App() {
         <div className="flex flex-col gap-3">
           <SettingsPanel />
           <AgentInspector />
+          <ZonesPanel />
+          <GovernancePanel />
         </div>
       </div>
+
+      <ModelDashboard />
     </div>
   );
 }

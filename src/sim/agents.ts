@@ -1,123 +1,131 @@
-import type { Agent } from './types';
-import { makeFullNeeds } from './needs';
-import { getLocation } from './world';
-import type { World } from './types';
+import type { Agent, World } from './types';
+import { randomTile } from './world';
+import { agentIdCounter } from './ids';
 
-interface SeedAgent {
+export interface AgentConfig {
   id: string;
-  name: string;
-  emoji: string;
-  color: string;
-  bio: string;
-  traits: string[];
-  homeLocationId: string;
+  label: string;
+  model: string;
 }
 
-const SEED_AGENTS: SeedAgent[] = [
-  {
-    id: 'alex',
-    name: 'Alex',
-    emoji: '🧑',
-    color: '#f97316',
-    bio: 'A restless painter who talks to strangers a little too easily.',
-    traits: ['curious', 'flirtatious', 'impulsive'],
-    homeLocationId: 'home_a',
-  },
-  {
-    id: 'briar',
-    name: 'Briar',
-    emoji: '🧑‍🦱',
-    color: '#22c55e',
-    bio: 'A quiet gardener who prefers routines and old books to small talk.',
-    traits: ['introverted', 'loyal', 'stubborn'],
-    homeLocationId: 'home_a',
-  },
-  {
-    id: 'coral',
-    name: 'Coral',
-    emoji: '👩',
-    color: '#06b6d4',
-    bio: 'A sharp-tongued barista who says exactly what she thinks.',
-    traits: ['blunt', 'witty', 'competitive'],
-    homeLocationId: 'home_b',
-  },
-  {
-    id: 'dax',
-    name: 'Dax',
-    emoji: '🧔',
-    color: '#a855f7',
-    bio: 'An easygoing musician who falls for people fast and hard.',
-    traits: ['romantic', 'charming', 'disorganized'],
-    homeLocationId: 'home_b',
-  },
-  {
-    id: 'ember',
-    name: 'Ember',
-    emoji: '👱',
-    color: '#ef4444',
-    bio: 'A hot-headed ex-athlete still figuring out what she wants.',
-    traits: ['ambitious', 'jealous', 'passionate'],
-    homeLocationId: 'home_a',
-  },
+const COLOR_PALETTE = [
+  '#f97316',
+  '#22c55e',
+  '#06b6d4',
+  '#a855f7',
+  '#ef4444',
+  '#eab308',
+  '#3b82f6',
+  '#ec4899',
 ];
 
-export function createInitialAgents(world: World): Agent[] {
-  const homeSlot: Record<string, number> = {};
-  return SEED_AGENTS.map((seed) => {
-    const home = getLocation(world, seed.homeLocationId);
-    const slot = homeSlot[seed.homeLocationId] ?? 0;
-    homeSlot[seed.homeLocationId] = slot + 1;
-    const startPos = home.footprint[slot % home.footprint.length];
-    return {
-      id: seed.id,
-      name: seed.name,
-      emoji: seed.emoji,
-      color: seed.color,
-      persona: { bio: seed.bio, traits: seed.traits },
-      homeLocationId: seed.homeLocationId,
-      pos: { ...startPos },
-      path: [],
-      needs: makeFullNeeds(),
-      activity: { kind: 'idle', cooldownUntilTick: 0 },
-      relationships: {},
-      memory: [],
-      speech: null,
-      isChild: false,
-      generation: 0,
-      parentIds: [],
-    } satisfies Agent;
-  });
+export function makeAgentConfigId(): string {
+  return agentIdCounter.next();
 }
 
-let childCounter = 0;
+/**
+ * "Agent" reads as spy/secret-agent fiction to a language model — a
+ * surprisingly strong prior in training data — which can bias conversations
+ * toward "mission" tropes independent of anything actually said. Default
+ * labels are deliberately just letters instead. Fully renameable either way.
+ */
+export function defaultLabelForIndex(index: number): string {
+  return String.fromCharCode(65 + (index % 26));
+}
 
-export function spawnChild(world: World, parentA: Agent, parentB: Agent): Agent {
-  childCounter += 1;
-  const home = getLocation(world, parentA.homeLocationId);
-  const names = ['Sky', 'Wren', 'Robin', 'River', 'Sage', 'Juniper', 'Ash', 'Lark'];
-  const name = names[(childCounter - 1) % names.length] + (childCounter > names.length ? ` ${childCounter}` : '');
-  const traitPool = [...parentA.persona.traits, ...parentB.persona.traits];
-  const traits = Array.from(new Set(traitPool)).slice(0, 3);
+export function defaultAgentConfigs(): AgentConfig[] {
+  return [0, 1, 2].map((i) => ({ id: makeAgentConfigId(), label: defaultLabelForIndex(i), model: '' }));
+}
 
+/** Stable per-id color so an agent doesn't change color when others are added/removed. */
+export function colorForId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return COLOR_PALETTE[hash % COLOR_PALETTE.length];
+}
+
+const STARTING_NEED = 70;
+const STARTING_WALLET = 20;
+
+/** Builds one live, running agent from a config. No persona, no fixed goals — needs, wallet,
+ *  roles and relationships are all just state the agent can act on (or ignore) as it chooses. */
+export function createAgentFromConfig(config: AgentConfig, world: World, index: number): Agent {
   return {
-    id: `child_${Date.now().toString(36)}_${childCounter}`,
-    name,
-    emoji: '🧒',
-    color: parentA.color,
-    persona: {
-      bio: `Child of ${parentA.name} and ${parentB.name}, still finding their own way.`,
-      traits: traits.length > 0 ? traits : ['curious'],
-    },
-    homeLocationId: parentA.homeLocationId,
-    pos: { ...home.anchor },
+    id: config.id,
+    label: config.label.trim() || defaultLabelForIndex(index),
+    model: config.model,
+    color: colorForId(config.id),
+    pos: randomTile(world),
     path: [],
-    needs: makeFullNeeds(),
     activity: { kind: 'idle', cooldownUntilTick: 0 },
-    relationships: {},
     memory: [],
+    reflections: [],
+    lastReflectionTick: 0,
+    selfNarrative: '',
+    lastSelfNarrativeTick: 0,
     speech: null,
-    isChild: true,
-    generation: Math.max(parentA.generation, parentB.generation) + 1,
+    needs: { hunger: STARTING_NEED, energy: STARTING_NEED, social: STARTING_NEED, fun: STARTING_NEED },
+    condition: 100,
+    wallet: STARTING_WALLET,
+    roles: [],
+    relationships: {},
+    familyProposalTo: null,
+    familyProposalTick: 0,
+    parentIds: null,
+    childIds: [],
+  };
+}
+
+/** Builds the live, running agents for a simulation from the configured roster. */
+export function createAgentsFromConfigs(configs: AgentConfig[], world: World): Agent[] {
+  return configs.map((config, index) => createAgentFromConfig(config, world, index));
+}
+
+function clampToWorld(world: World, pos: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: Math.max(0, Math.min(world.width - 1, pos.x)),
+    y: Math.max(0, Math.min(world.height - 1, pos.y)),
+  };
+}
+
+/** Builds the config + live agent for a child produced by two consenting parents. Spawns near
+ *  the parents' midpoint, with fresh needs/wallet of its own (needs aren't hereditary — only
+ *  which two agents made it is) and one parent's model picked at random so it's immediately
+ *  part of the run rather than sitting inert until manually assigned. */
+export function createChildAgent(parentA: Agent, parentB: Agent, world: World): { config: AgentConfig; agent: Agent } {
+  const id = makeAgentConfigId();
+  const label = defaultLabelForIndex(Number(id) - 1);
+  const model = Math.random() < 0.5 ? parentA.model : parentB.model;
+  const config: AgentConfig = { id, label, model };
+  const pos = clampToWorld(world, {
+    x: Math.round((parentA.pos.x + parentB.pos.x) / 2),
+    y: Math.round((parentA.pos.y + parentB.pos.y) / 2),
+  });
+  const agent: Agent = {
+    id,
+    label,
+    model,
+    color: colorForId(id),
+    pos,
+    path: [],
+    activity: { kind: 'idle', cooldownUntilTick: 0 },
+    memory: [],
+    reflections: [],
+    lastReflectionTick: 0,
+    selfNarrative: '',
+    lastSelfNarrativeTick: 0,
+    speech: null,
+    needs: { hunger: STARTING_NEED, energy: STARTING_NEED, social: STARTING_NEED, fun: STARTING_NEED },
+    condition: 100,
+    wallet: STARTING_WALLET,
+    roles: [],
+    relationships: {},
+    familyProposalTo: null,
+    familyProposalTick: 0,
     parentIds: [parentA.id, parentB.id],
-  } satisfies Agent;
+    childIds: [],
+  };
+  return { config, agent };
 }
