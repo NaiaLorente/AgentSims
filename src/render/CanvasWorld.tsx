@@ -591,7 +591,42 @@ function drawParkScene(ctx: CanvasRenderingContext2D, zone: Zone, x: number, y: 
   drawBench(ctx, x + w * 0.25, y + h * 0.72, Math.min(w, h) * 0.2);
 }
 
-function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number, ownerColor: string | null) {
+function drawBoardScene(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, noticeCount: number) {
+  const cx = x + w / 2;
+  const groundY = y + h * 0.85;
+  drawGroundShadow(ctx, cx, groundY, w * 0.28, h * 0.06);
+
+  const postW = w * 0.06;
+  ctx.fillStyle = '#8a6d3b';
+  ctx.fillRect(cx - w * 0.32, groundY - h * 0.1, postW, h * 0.1);
+  ctx.fillRect(cx + w * 0.32 - postW, groundY - h * 0.1, postW, h * 0.1);
+
+  const boardW = w * 0.72;
+  const boardH = h * 0.5;
+  const boardLeft = cx - boardW / 2;
+  const boardTop = groundY - h * 0.1 - boardH;
+  ctx.fillStyle = '#9c7a45';
+  ctx.fillRect(boardLeft, boardTop, boardW, boardH);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(boardLeft, boardTop, boardW, boardH);
+
+  // a few pinned "notes" — just enough to be visually distinct, not literally one per notice
+  const noteColors = ['#fde68a', '#bbf7d0', '#fecaca', '#bfdbfe'];
+  const shown = Math.min(noticeCount, 4);
+  for (let i = 0; i < shown; i++) {
+    const noteW = boardW * 0.22;
+    const noteH = boardH * 0.32;
+    const nx = boardLeft + boardW * 0.1 + (i % 2) * boardW * 0.42;
+    const ny = boardTop + boardH * 0.14 + Math.floor(i / 2) * boardH * 0.42;
+    ctx.fillStyle = noteColors[i % noteColors.length];
+    ctx.fillRect(nx, ny, noteW, noteH);
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+    ctx.strokeRect(nx, ny, noteW, noteH);
+  }
+}
+
+function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number, ownerColor: string | null, noticeCount: number) {
   const x = zone.bounds.x * TILE;
   const y = zone.bounds.y * TILE;
   const w = zone.bounds.w * TILE;
@@ -611,6 +646,8 @@ function drawZone(ctx: CanvasRenderingContext2D, zone: Zone, t: number, ownerCol
     drawShopScene(ctx, x, y, w, h);
   } else if (zone.kind === 'restaurant') {
     drawRestaurantScene(ctx, x, y, w, h);
+  } else if (zone.kind === 'board') {
+    drawBoardScene(ctx, x, y, w, h, noticeCount);
   } else {
     drawParkScene(ctx, zone, x, y, w, h, t);
   }
@@ -695,7 +732,8 @@ export function CanvasWorld() {
 
       for (const zone of state.zones) {
         const ownerColor = zone.ownerId ? (state.agents[zone.ownerId]?.color ?? null) : null;
-        drawZone(ctx, zone, t, ownerColor);
+        const noticeCount = zone.kind === 'board' ? state.notices.length : 0;
+        drawZone(ctx, zone, t, ownerColor, noticeCount);
       }
 
       const targets = agentTargets(state.agentOrder, state.agents);

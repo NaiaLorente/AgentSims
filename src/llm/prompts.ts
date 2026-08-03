@@ -1,4 +1,4 @@
-import { FAMILY_AFFINITY_THRESHOLD, WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Proposal, type Zone } from '../sim/types';
+import { FAMILY_AFFINITY_THRESHOLD, WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Notice, type Proposal, type Zone } from '../sim/types';
 import { formatMemoriesForPrompt } from '../sim/memory';
 import { zoneAt } from '../sim/zones';
 
@@ -29,6 +29,7 @@ export const PLANNER_SCHEMA = {
         'start_family',
         'propose_banish',
         'vote',
+        'post_notice',
         'wait',
       ],
     },
@@ -67,6 +68,7 @@ const ZONE_DESCRIPTIONS: Record<Zone['kind'], string> = {
   restaurant: 'a place to buy food, or to work if you have a job here',
   shop: 'a place to work if you have a job here',
   park: 'a place to have fun',
+  board: 'a place to pin a message for the whole town to see later — anyone can read what\'s posted from anywhere, but posting means standing here',
 };
 
 function describeZone(zone: Zone): string {
@@ -150,12 +152,25 @@ function describeProposals(proposals: Proposal[]): string {
   return `\n\nOpen votes on banishing someone from town:\n${lines}`;
 }
 
+/** The notice board's actual current contents — everyone gets this regardless of where they're
+ *  standing, since the whole point of a durable public board is that you don't have to be there
+ *  to read it (only to post to it). Most recent last, like a real board read top-to-bottom. */
+function describeNotices(notices: Notice[]): string {
+  if (notices.length === 0) return '';
+  const lines = notices
+    .slice(-10)
+    .map((n) => `- ${n.authorLabel} (tick ${n.tick}): "${n.text}"`)
+    .join('\n');
+  return `\n\nWhat's pinned to the notice board right now:\n${lines}`;
+}
+
 export function buildPlannerPrompt(
   agent: Agent,
   nearbyAgents: Agent[],
   zones: Zone[],
   allAgents: Agent[],
   proposals: Proposal[],
+  notices: Notice[],
 ): { system: string; user: string } {
   const system = `You are ${agent.label}.
 
@@ -173,12 +188,13 @@ You can:
 - ask someone nearby you feel a strong bond with (affinity ${FAMILY_AFFINITY_THRESHOLD} or higher) to start a family — it only actually happens once they've asked you the same thing too, either before or after; asking doesn't commit them to anything, and either of you can just not follow up
 - propose banishing someone from town, in your own words why — it doesn't happen immediately, it becomes a vote everyone else in town can weigh in on, decided by majority once the voting window closes
 - vote for or against an open banishment proposal, if you want to — you can't vote on a proposal about yourself
+- pin a message to the notice board, if you're standing at it — unlike talking, this stays up and anyone in town can read it later, from anywhere, whether or not they were ever near you
 - do nothing
 
 Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it. Going a long stretch without eating or resting has a lasting cost on top of that: you'll visibly decline, and if it goes on long enough you can lose a house you own.
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "propose_banish" | "vote" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), "start_family" (id of someone listed below), or "propose_banish" (id of someone in town), "message": only if action is "say" (what you say) or "propose_banish" (your reason, in your own words), "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "proposalId": only if action is "vote" — id of the proposal from the list below, "support": only if action is "vote" — true to vote for it, false to vote against, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "propose_banish" | "vote" | "post_notice" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), "start_family" (id of someone listed below), or "propose_banish" (id of someone in town), "message": only if action is "say" (what you say), "propose_banish" (your reason, in your own words), or "post_notice" (what you're posting), "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "proposalId": only if action is "vote" — id of the proposal from the list below, "support": only if action is "vote" — true to vote for it, false to vote against, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -191,7 +207,7 @@ Respond ONLY with JSON of this shape:
   const user = `${describeSelf(agent, currentZone)}${describeSelfNarrative(agent)}${describeReflections(agent)}${describeRelationships(agent)}
 
 People nearby:
-${nearbyDesc}${zonesBlock}${describeCommunity(agent, allAgents)}${describeProposals(proposals)}
+${nearbyDesc}${zonesBlock}${describeCommunity(agent, allAgents)}${describeProposals(proposals)}${describeNotices(notices)}
 
 What's happened so far:
 ${formatMemoriesForPrompt(agent, 14)}
@@ -266,6 +282,11 @@ export function parseIntent(
         return { kind: 'vote', proposalId: resp.proposalId, support: resp.support };
       }
       return { kind: 'wait' };
+    case 'post_notice': {
+      const text = (resp.message ?? '').trim().slice(0, 200);
+      if (!text) return { kind: 'wait' };
+      return { kind: 'post_notice', message: text };
+    }
     default:
       return { kind: 'wait' };
   }

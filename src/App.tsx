@@ -6,6 +6,7 @@ import { AgentInspector } from './ui/AgentInspector';
 import { EventLog } from './ui/EventLog';
 import { ZonesPanel } from './ui/ZonesPanel';
 import { GovernancePanel } from './ui/GovernancePanel';
+import { NoticeBoardPanel } from './ui/NoticeBoardPanel';
 import { LiveConversations } from './ui/LiveConversations';
 import { ModelDashboard } from './ui/ModelDashboard';
 import { startLoopWatcher } from './sim/loop';
@@ -20,8 +21,8 @@ export default function App() {
       <header>
         <h1 className="text-xl font-semibold">AgentSims</h1>
         <p className="text-xs text-white/50">
-          Several LLMs dropped into a shared town — houses, a shop, a restaurant, a park — with needs, jobs, and
-          relationships to manage, but total free will over what to actually do about any of it.
+          Several LLMs dropped into a shared town — houses, a shop, a restaurant, a park, a notice board — with
+          needs, jobs, and relationships to manage, but total free will over what to actually do about any of it.
         </p>
       </header>
 
@@ -43,6 +44,7 @@ export default function App() {
           <AgentInspector />
           <ZonesPanel />
           <GovernancePanel />
+          <NoticeBoardPanel />
         </div>
       </div>
 

@@ -6,6 +6,7 @@ const ZONE_ICON: Record<ZoneKind, string> = {
   shop: '🛒',
   restaurant: '🍽️',
   park: '🌳',
+  board: '📌',
 };
 
 /**

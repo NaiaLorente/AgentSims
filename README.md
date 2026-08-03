@@ -72,10 +72,10 @@ Most browsers exempt `localhost`, but if yours doesn't:
 
 ## How it works
 
-- **The map**: five fixed places — two houses, a shop, a restaurant, and a
-  park — laid out on an open field, always known to every agent from the
-  start (like a real map, not something discovered by wandering close
-  enough). Agents render as small animated characters (their own color, a
+- **The map**: six fixed places — two houses, a shop, a restaurant, a
+  park, and a notice board — laid out on an open field, always known to
+  every agent from the start (like a real map, not something discovered by
+  wandering close enough). Agents render as small animated characters (their own color, a
   walk cycle, facing whichever way they're moving); each place renders as a
   labeled, tinted area you can walk into. Scroll to zoom and drag to pan
   around the scene; double-click resets the view.
@@ -153,7 +153,8 @@ Most browsers exempt `localhost`, but if yours doesn't:
   it wants to do — move, walk to a specific place, approach and talk to a
   nearby agent, say something out loud, rest, have fun, buy food, buy a
   house, claim a role, work, propose banishing someone, vote on an open
-  proposal, or do nothing — via a minimal JSON action schema. That schema is the only "instruction" involved; it describes
+  proposal, pin a notice to the board, or do nothing — via a minimal JSON
+  action schema. That schema is the only "instruction" involved; it describes
   what's mechanically possible, not what the agent should want. Every
   planning prompt also states plainly which place, if any, the agent is
   currently standing in — since several actions (resting, buying, working)
@@ -186,6 +187,14 @@ Most browsers exempt `localhost`, but if yours doesn't:
   ever corrected or coached — a model that loops on its own prior output,
   fixates on a solved need, or never works out how to afford something is
   showing you something real about that model, not a bug to smooth over.
+- **A durable, public notice board — not just conversation that scrolls
+  away.** Talking only reaches whoever's nearby, and only survives in the
+  transcript. The notice board is different: any agent standing at it can
+  pin a short message, and from then on every agent's planning prompt
+  includes what's pinned, regardless of where they are or whether they were
+  ever near whoever posted it. Posting is the only part that's physically
+  gated — reading isn't, since the whole point of something durable and
+  public is that you don't have to have been there.
 - **Relationships are remembered, not just implied by chat.** After any
   exchange, the speaking agent's own model can optionally update how it
   feels about the other person — a short label in its own words ("a close

@@ -6,6 +6,7 @@ import {
   type Direction,
   type LogEntry,
   type ModelStats,
+  type Notice,
   type Proposal,
   type Vec2,
   type WalkGoal,
@@ -98,6 +99,13 @@ function makeProposalId(): string {
   proposalCounter += 1;
   return `prop_${Date.now().toString(36)}_${proposalCounter}`;
 }
+
+let noticeCounter = 0;
+function makeNoticeId(): string {
+  noticeCounter += 1;
+  return `notice_${Date.now().toString(36)}_${noticeCounter}`;
+}
+const MAX_NOTICES = 30;
 
 function chebyshev(a: Vec2, b: Vec2): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -490,7 +498,7 @@ async function requestPlan(agentId: string): Promise<void> {
     .filter((o): o is Agent => !!o && o.id !== agentId && chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
   const allAgents = state0.agentOrder.map((id) => state0.agents[id]).filter((o): o is Agent => !!o);
 
-  const { system, user } = buildPlannerPrompt(agent, nearby, state0.zones, allAgents, state0.proposals);
+  const { system, user } = buildPlannerPrompt(agent, nearby, state0.zones, allAgents, state0.proposals, state0.notices);
   const resp = await chatJSON<PlannerResponse>(
     agentSettings(state0.settings, agent),
     { system, user, schema: PLANNER_SCHEMA },
@@ -778,6 +786,23 @@ async function requestPlan(agentId: string): Promise<void> {
           proposal.votesAgainst = proposal.votesAgainst.filter((id) => id !== a.id);
           (intent.support ? proposal.votesFor : proposal.votesAgainst).push(a.id);
           addMemory(a, now, 'governance', `You voted ${intent.support ? 'for' : 'against'} banishing ${proposal.targetLabel}.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'post_notice': {
+        const zone = zoneAt(state.zones, a.pos);
+        if (!zone || zone.kind !== 'board') {
+          addMemory(a, now, 'notice', `You tried to post a notice, but you're not at the board.`);
+        } else {
+          const text = intent.message.trim().slice(0, 200);
+          const notice: Notice = { id: makeNoticeId(), authorId: a.id, authorLabel: a.label, text, tick: now };
+          state.notices.push(notice);
+          if (state.notices.length > MAX_NOTICES) {
+            state.notices.splice(0, state.notices.length - MAX_NOTICES);
+          }
+          addMemory(a, now, 'notice', `You pinned a notice to the board: "${text}"`);
+          pushLogEntry(state, { tick: now, text: `${a.label} posted a notice: "${text}"`, kind: 'event' });
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;

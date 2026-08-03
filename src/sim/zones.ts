@@ -14,6 +14,7 @@ export function createZones(): Zone[] {
     { id: 'shop', kind: 'shop' as const, name: 'The Shop', bounds: { x: 16, y: 1, w: 3, h: 3 } },
     { id: 'restaurant', kind: 'restaurant' as const, name: 'The Restaurant', bounds: { x: 16, y: 9, w: 3, h: 3 } },
     { id: 'park', kind: 'park' as const, name: 'The Park', bounds: { x: 8, y: 5, w: 4, h: 4 } },
+    { id: 'board', kind: 'board' as const, name: 'The Notice Board', bounds: { x: 8, y: 0, w: 4, h: 2 } },
   ];
   return bounds.map((z) => ({ ...z, ownerId: null, ownerLabel: null }));
 }

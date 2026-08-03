@@ -6,6 +6,7 @@ import type {
   Agent,
   LogEntry,
   ModelStats,
+  Notice,
   PopulationPoint,
   Proposal,
   SimClock,
@@ -60,6 +61,9 @@ export interface SimState {
   populationHistory: PopulationPoint[];
   /** Self-governance banishment proposals, open and resolved — town-wide, not per-agent. */
   proposals: Proposal[];
+  /** Messages pinned to the notice board — durable and town-wide, unlike conversation. Capped,
+   *  oldest dropped first. */
+  notices: Notice[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -129,6 +133,7 @@ export const useSimStore = create<SimState>()(
       affinityHistory: [],
       populationHistory: [{ tick: 0, count: agentOrder.length }],
       proposals: [],
+      notices: [],
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
       settings: DEFAULT_CONNECTION_SETTINGS,
@@ -227,6 +232,7 @@ export const useSimStore = create<SimState>()(
           state.modelStats = {};
           state.affinityHistory = [];
           state.proposals = [];
+          state.notices = [];
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;
@@ -247,6 +253,7 @@ export function serializeSnapshot(): {
   affinityHistory: AffinityPoint[];
   populationHistory: PopulationPoint[];
   proposals: Proposal[];
+  notices: Notice[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -261,6 +268,7 @@ export function serializeSnapshot(): {
     affinityHistory: s.affinityHistory,
     populationHistory: s.populationHistory,
     proposals: s.proposals,
+    notices: s.notices,
     log: s.log,
     clock: { ...s.clock, running: false },
     settings: s.settings,
@@ -276,6 +284,7 @@ export function loadSnapshot(snapshot: {
   affinityHistory?: AffinityPoint[];
   populationHistory?: PopulationPoint[];
   proposals?: Proposal[];
+  notices?: Notice[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -294,6 +303,7 @@ export function loadSnapshot(snapshot: {
     state.modelStats = snapshot.modelStats ?? {};
     state.affinityHistory = snapshot.affinityHistory ?? [];
     state.proposals = snapshot.proposals ?? [];
+    state.notices = snapshot.notices ?? [];
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
     state.populationHistory = snapshot.populationHistory ?? [{ tick: state.clock.tick, count: state.agentOrder.length }];

@@ -12,7 +12,7 @@ export interface World {
 }
 
 /** A fixed place on the map — always known to every agent, not something discovered. */
-export type ZoneKind = 'house' | 'shop' | 'restaurant' | 'park';
+export type ZoneKind = 'house' | 'shop' | 'restaurant' | 'park' | 'board';
 
 export interface Zone {
   id: string;
@@ -38,7 +38,8 @@ export type MemoryKind =
   | 'reflection' // a higher-level takeaway synthesized from raw memory, not a single event
   | 'gave' // money changed hands with another agent
   | 'family' // a family proposal made, received, or a child born
-  | 'governance'; // a banishment proposed, voted on, or resolved
+  | 'governance' // a banishment proposed, voted on, or resolved
+  | 'notice'; // posted to, or read from, the notice board
 
 export interface MemoryEvent {
   id: string;
@@ -63,6 +64,7 @@ export type AgentIntent =
   | { kind: 'start_family'; targetId: string }
   | { kind: 'propose_banish'; targetId: string; reason: string }
   | { kind: 'vote'; proposalId: string; support: boolean }
+  | { kind: 'post_notice'; message: string }
   | { kind: 'wait' };
 
 /** A role or job title an agent has claimed for itself at a specific zone — entirely
@@ -102,6 +104,17 @@ export interface Proposal {
   createdTick: number;
   resolvesAtTick: number;
   status: ProposalStatus;
+}
+
+/** A message pinned to the notice board — durable and visible to the whole town regardless of
+ *  where anyone is standing, unlike `say`, which only reaches whoever's nearby and only lives on
+ *  in the transcript. Posting still requires physically being at the board; reading doesn't. */
+export interface Notice {
+  id: string;
+  authorId: string;
+  authorLabel: string;
+  text: string;
+  tick: number;
 }
 
 /** Below this, an agent's condition counts as "worse off" — visible on the canvas and in the
