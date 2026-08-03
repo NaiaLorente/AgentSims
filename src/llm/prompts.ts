@@ -118,24 +118,6 @@ function describeReflections(agent: Agent): string {
   return `\n\nLooking back, you've noticed:\n${lines}`;
 }
 
-/** Surfaces the agent's own actual last private thought, so a model that's fallen into repeating
- *  itself verbatim turn after turn has that fact put in front of it directly, rather than relying
- *  on it noticing the repeat buried in its own recent-memory list. A note on form, not on what to
- *  think — it doesn't say what the next thought should be, only that it shouldn't be identical. */
-function describeLastThought(agent: Agent): string {
-  const last = [...agent.memory].reverse().find((m) => m.kind === 'thought');
-  if (!last) return '';
-  return `\n\nYour last private thought was: "${last.text}" — if nothing's actually changed, think something new instead of just repeating it.`;
-}
-
-/** Same idea, for spoken lines — the last thing an agent actually said, across any conversation,
- *  not just the current one (a repeat can happen turns or conversations apart). */
-function describeLastSaid(agent: Agent): string {
-  const last = [...agent.memory].reverse().find((m) => m.kind === 'said');
-  if (!last) return '';
-  return `\n\nFor reference: ${last.text} — avoid just repeating that verbatim if you don't have anything new to add.\n`;
-}
-
 export function buildPlannerPrompt(agent: Agent, nearbyAgents: Agent[], zones: Zone[]): { system: string; user: string } {
   const system = `You are ${agent.label}.
 
@@ -166,7 +148,7 @@ Respond ONLY with JSON of this shape:
   const zonesBlock = `\n\n${describeZonesBlock(zones)}`;
   const currentZone = zoneAt(zones, agent.pos);
 
-  const user = `${describeSelf(agent, currentZone)}${describeReflections(agent)}${describeRelationships(agent)}${describeLastThought(agent)}
+  const user = `${describeSelf(agent, currentZone)}${describeReflections(agent)}${describeRelationships(agent)}
 
 People nearby:
 ${nearbyDesc}${zonesBlock}
@@ -315,7 +297,7 @@ Respond ONLY with JSON of this shape:
       ? '(Nothing said yet this time.)'
       : transcript.map((line) => `${line.speakerLabel}: ${line.text}`).join('\n');
 
-  const user = `${relationshipBlock}${historyBlock}${describeZonesBlock(zones)}${describeLastSaid(speaker)}
+  const user = `${relationshipBlock}${historyBlock}${describeZonesBlock(zones)}
 
 Right now:
 ${transcriptText}

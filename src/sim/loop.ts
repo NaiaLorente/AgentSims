@@ -81,49 +81,6 @@ function clamp100(v: number): number {
   return Math.max(0, Math.min(100, v));
 }
 
-function joinNames(names: string[]): string {
-  if (names.length === 0) return '';
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} and ${names[1]}`;
-  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
-}
-
-/** A dead-end failure (wrong place for what you're trying to do) is a lot more useful with the
- *  actual fix named — same idea as telling an agent where it's currently standing, one step
- *  further: telling it where it'd need to go instead, so a stated intent ("I need to rest soon")
- *  has a concrete next action instead of just repeating the same failed attempt in place. */
-function whereForHint(names: string[]): string {
-  return names.length > 0 ? ` ${joinNames(names)} would work — you'd need to go there first.` : '';
-}
-
-/** Same idea again, one step further still: a wallet shortfall is a dead end too, and "not
- *  enough money" alone leaves an agent no more able to fix that than "not the right place" did —
- *  naming the actual gap and the one way to close it (work) turns a stated goal it can't afford
- *  into a concrete next step instead of a loop of identical failed attempts. If it already holds
- *  a role somewhere, point at working that instead of suggesting it claim a redundant one. */
-/** An action that succeeds isn't necessarily worth repeating — resting from 98 to 100 energy
- *  isn't the same as resting from 20 to 45, but the old flat "restoring energy" message read
- *  identically either way. Naming the actual outcome (and flagging when it barely moved the
- *  needle) is honest reporting, not a priority nudge — it doesn't say what to do about it. */
-function outcomeNote(before: number): string {
-  return before >= 90 ? ', but you were already close to full — it barely helped' : '';
-}
-
-function earnMoneyHint(state: SimState, agent: Agent, price: number): string {
-  const shortfall = price - agent.wallet;
-  const roleZoneNames = [
-    ...new Set(
-      agent.roles.map((r) => state.zones.find((z) => z.id === r.zoneId)?.name).filter((n): n is string => !!n),
-    ),
-  ];
-  if (roleZoneNames.length > 0) {
-    return ` You have $${agent.wallet}, short by $${shortfall}. Working your job at ${joinNames(roleZoneNames)} would help you earn the rest.`;
-  }
-  const jobPlaces = state.zones.filter((z) => z.kind === 'shop' || z.kind === 'restaurant').map((z) => z.name);
-  if (jobPlaces.length === 0) return '';
-  return ` You have $${agent.wallet}, short by $${shortfall}. Claiming a role at ${joinNames(jobPlaces)} and working it would help you earn the rest.`;
-}
-
 function agentSettings(globalSettings: SimState['settings'], agent: Agent): OllamaSettings {
   return { baseUrl: globalSettings.baseUrl, temperature: globalSettings.temperature, model: agent.model };
 }
@@ -468,30 +425,25 @@ async function requestPlan(agentId: string): Promise<void> {
           (intent.need === 'energy' && zone?.kind === 'house') || (intent.need === 'fun' && zone?.kind === 'park');
         const houseAllowed = !zone || zone.kind !== 'house' || !zone.ownerId || zone.ownerId === a.id;
         if (kindFits && zone && houseAllowed) {
-          const before = a.needs[intent.need];
           const restore = intent.need === 'energy' ? REST_RESTORE : FUN_RESTORE;
-          a.needs[intent.need] = clamp100(before + restore);
+          a.needs[intent.need] = clamp100(a.needs[intent.need] + restore);
           const after = a.needs[intent.need];
-          const note = outcomeNote(before);
           addMemory(
             a,
             now,
             'need',
             intent.need === 'energy'
-              ? `You rested at ${zone.name}, restoring energy${note} (now ${Math.round(after)}/100).`
-              : `You had fun at ${zone.name}${note} (now ${Math.round(after)}/100).`,
+              ? `You rested at ${zone.name}, restoring energy (now ${Math.round(after)}/100).`
+              : `You had fun at ${zone.name} (now ${Math.round(after)}/100).`,
           );
         } else if (kindFits && zone) {
           addMemory(a, now, 'need', `You tried to rest at ${zone.name}, but it's owned by ${zone.ownerLabel}.`);
         } else {
-          const suited = state.zones
-            .filter((z) => (intent.need === 'energy' ? z.kind === 'house' : z.kind === 'park'))
-            .map((z) => z.name);
           addMemory(
             a,
             now,
             'need',
-            `You tried to ${intent.need === 'energy' ? 'rest' : 'have fun'}, but there's nowhere suited for that here.${whereForHint(suited)}`,
+            `You tried to ${intent.need === 'energy' ? 'rest' : 'have fun'}, but there's nowhere suited for that here.`,
           );
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
@@ -501,23 +453,15 @@ async function requestPlan(agentId: string): Promise<void> {
         const zone = zoneAt(state.zones, a.pos);
         const sells = zone?.kind === 'shop' || zone?.kind === 'restaurant';
         if (sells && zone && a.wallet >= FOOD_PRICE) {
-          const before = a.needs.hunger;
           a.wallet -= FOOD_PRICE;
-          a.needs.hunger = clamp100(before + FOOD_RESTORE);
+          a.needs.hunger = clamp100(a.needs.hunger + FOOD_RESTORE);
           const after = a.needs.hunger;
-          addMemory(
-            a,
-            now,
-            'bought',
-            `You bought food at ${zone.name} for $${FOOD_PRICE}${outcomeNote(before)} (now ${Math.round(after)}/100).`,
-          );
+          addMemory(a, now, 'bought', `You bought food at ${zone.name} for $${FOOD_PRICE} (now ${Math.round(after)}/100).`);
           if (a.model) statsFor(state, a.model).moneySpent += FOOD_PRICE;
         } else if (sells) {
-          const hint = earnMoneyHint(state, a, FOOD_PRICE);
-          addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.${hint}`);
+          addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.`);
         } else {
-          const sellers = state.zones.filter((z) => z.kind === 'shop' || z.kind === 'restaurant').map((z) => z.name);
-          addMemory(a, now, 'bought', `You tried to buy food, but there's nowhere selling it here.${whereForHint(sellers)}`);
+          addMemory(a, now, 'bought', `You tried to buy food, but there's nowhere selling it here.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
@@ -533,15 +477,12 @@ async function requestPlan(agentId: string): Promise<void> {
             if (a.model) statsFor(state, a.model).moneySpent += HOUSE_PRICE;
             pushLogEntry(state, { tick: now, text: `${a.label} bought ${zone.name}`, kind: 'event' });
           } else {
-            const hint = earnMoneyHint(state, a, HOUSE_PRICE);
-            addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but didn't have enough money.${hint}`);
+            addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but didn't have enough money.`);
           }
         } else if (zone && zone.kind === 'house') {
           addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but it's already owned by ${zone.ownerLabel}.`);
         } else {
-          const unowned = state.zones.filter((z) => z.kind === 'house' && !z.ownerId).map((z) => z.name);
-          const hint = unowned.length > 0 ? whereForHint(unowned) : ' Every house is already owned right now.';
-          addMemory(a, now, 'bought', `You tried to buy a house, but there's nowhere to buy one here.${hint}`);
+          addMemory(a, now, 'bought', `You tried to buy a house, but there's nowhere to buy one here.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
@@ -584,8 +525,7 @@ async function requestPlan(agentId: string): Promise<void> {
             });
           }
         } else {
-          const workplaces = state.zones.filter((z) => z.kind === 'shop' || z.kind === 'restaurant').map((z) => z.name);
-          addMemory(a, now, 'job', `You tried to claim a role, but there's nowhere here to claim it at.${whereForHint(workplaces)}`);
+          addMemory(a, now, 'job', `You tried to claim a role, but there's nowhere here to claim it at.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;

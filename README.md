@@ -92,12 +92,7 @@ Most browsers exempt `localhost`, but if yours doesn't:
   covers ground tick to tick, and being very hungry or bored shortens how
   far a single deliberate move actually gets it. Energy is restored by
   resting at a house it owns, fun by spending time at the park, hunger by
-  buying food, and social by simply talking to people. Restoring a need
-  reports the actual result, not a flat success message — resting from 20
-  energy to 45 and resting from 98 to 100 read differently ("...but you
-  were already close to full — it barely helped"), since a real run showed
-  an agent stuck resting over and over long after energy was maxed, while
-  hunger and fun it never touched quietly cratered in the background.
+  buying food, and social by simply talking to people.
 - **Sustained neglect has real stakes, not just a slowdown.** The needs
   above never block anything and self-correct the moment you act on them —
   but an agent that leaves hunger or energy critically low for a long
@@ -140,15 +135,11 @@ Most browsers exempt `localhost`, but if yours doesn't:
   currently standing in — since several actions (resting, buying, working)
   only succeed there, leaving that to be inferred from memory alone was
   producing agents stuck repeating a failed action because an earlier walk
-  there hadn't actually landed. Trying one of those actions from the wrong
-  place also names the actual place that would work right in the failure
-  memory ("...House A and House B would work — you'd need to go there
-  first."), so a stated intent ("I need to rest soon") has a concrete next
-  action available instead of only ever repeating the same dead end. Coming
-  up short on money gets the same treatment: trying to buy something without
-  enough cash names the actual shortfall and points at working a job as the
-  way to close it — pointing at the specific job it already holds if it has
-  one, rather than suggesting it claim a redundant second one. The prompts
+  there hadn't actually landed. Failed attempts otherwise get a plain
+  factual message, not a suggested fix — an agent that can't afford a
+  house, or can't find anywhere to rest, is left to work that out itself;
+  correcting it in the moment would be coaching it toward a decision that's
+  supposed to be its own. The prompts
   never mention AI, models, or "free will" as a concept — telling an agent
   what it *is* just gets it talking about that instead of acting, so it's
   only ever told what it can do, in-world, first person. There is no
@@ -166,11 +157,11 @@ Most browsers exempt `localhost`, but if yours doesn't:
   same real places, by name and id — so a conversation that drifts onto
   "where's House A?" has real facts to draw on instead of inventing
   landmarks that don't exist, the way one long real run did before this.
-  It also gets a copy of the agent's own last spoken line, and the planner
-  prompt gets a copy of its last private thought, each with a plain nudge
-  not to just repeat it verbatim if nothing's changed — smaller local
-  models tend to loop on their own prior output, and this puts the repeat
-  in front of the model directly rather than leaving it buried in memory.
+  That's the line this project tries to hold everywhere prompts touch
+  behavior: real facts about the world are always given, but nothing is
+  ever corrected or coached — a model that loops on its own prior output,
+  fixates on a solved need, or never works out how to afford something is
+  showing you something real about that model, not a bug to smooth over.
 - **Relationships are remembered, not just implied by chat.** After any
   exchange, the speaking agent's own model can optionally update how it
   feels about the other person — a short label in its own words ("a close
