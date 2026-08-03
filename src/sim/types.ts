@@ -91,10 +91,6 @@ export const WORSE_OFF_THRESHOLD = 40;
  *  used for relationship bars/sparklines, so the UI and the mechanic agree on what "strong" means. */
 export const FAMILY_AFFINITY_THRESHOLD = 60;
 
-/** Hard ceiling on total agents (founding + spawned). Shared by the sim loop and UI so a family
- *  proposal that can't possibly succeed says so up front instead of leaving a dangling proposal. */
-export const MAX_POPULATION = 10;
-
 export interface Needs {
   hunger: number; // 0..100, 100 = fully satisfied
   energy: number;

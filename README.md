@@ -177,10 +177,11 @@ Most browsers exempt `localhost`, but if yours doesn't:
   anything, and either side can just never follow up. A resulting child
   spawns with fresh needs of its own, inherits one parent's model at random
   so it's immediately part of the run, and shows up in every panel — the
-  roster, the canvas, the dashboard — the same as anyone added by hand. A
-  fixed population cap (10 agents total, founding or spawned) keeps this
-  from spiraling on a long unattended run; once it's hit, a proposal that
-  would otherwise succeed just says so instead of quietly failing.
+  roster, the canvas, the dashboard — the same as anyone added by hand.
+  There's no engine-imposed population ceiling — only two houses and two
+  job-capable places ever exist, so a town that grows past what its own
+  economy can actually support is a real, unrescued outcome to watch
+  happen, not something capped off before it can.
 - **Memory carries across encounters.** Every agent remembers what it's
   said, heard, earned, bought, claimed, and who it's met, and that memory is
   fed back into both its decisions and its next conversation with the same

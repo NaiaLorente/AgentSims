@@ -1,7 +1,6 @@
 import { useSimStore, makeLogId, type SimState } from '../state/simStore';
 import {
   FAMILY_AFFINITY_THRESHOLD,
-  MAX_POPULATION,
   WORSE_OFF_THRESHOLD,
   type Agent,
   type Direction,
@@ -555,8 +554,6 @@ async function requestPlan(agentId: string): Promise<void> {
           addMemory(a, now, 'family', `You wanted to start a family with ${target.label}, but they weren't close enough.`);
         } else if (affinity < FAMILY_AFFINITY_THRESHOLD) {
           addMemory(a, now, 'family', `You considered starting a family with ${target.label}, but don't feel ready for that yet.`);
-        } else if (state.agentOrder.length >= MAX_POPULATION) {
-          addMemory(a, now, 'family', `You wanted to start a family with ${target.label}, but the town has no room for anyone new right now.`);
         } else if (target.familyProposalTo === a.id && now - target.familyProposalTick <= FAMILY_PROPOSAL_EXPIRY_TICKS) {
           const { config, agent: child } = createChildAgent(a, target, state.world);
           state.agentConfigs.push(config);

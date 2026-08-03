@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useSimStore } from '../state/simStore';
 import { listModels, testConnection } from '../llm/ollamaClient';
 import { colorForId, defaultLabelForIndex } from '../sim/agents';
-import { MAX_POPULATION } from '../sim/types';
 
 export function SettingsPanel() {
   const settings = useSimStore((s) => s.settings);
@@ -111,13 +110,9 @@ export function SettingsPanel() {
 
       <div className="mt-1 flex items-center justify-between">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-white/60">
-          Agents <span className="normal-case text-white/30">({agentConfigs.length}/{MAX_POPULATION})</span>
+          Agents <span className="normal-case text-white/30">({agentConfigs.length})</span>
         </h2>
-        <button
-          onClick={addAgentConfig}
-          disabled={agentConfigs.length >= MAX_POPULATION}
-          className="rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/10"
-        >
+        <button onClick={addAgentConfig} className="rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-white/20">
           + Add agent
         </button>
       </div>
@@ -165,7 +160,7 @@ export function SettingsPanel() {
         Assign a different model to each agent to compare how they behave. Changes apply immediately — use{' '}
         <strong>Reset</strong> only if you want to fully restart (clear positions, memory, and the transcript).
         Two agents with a strong enough mutual bond can also start a family on their own — a child then shows up
-        here too, once the cap above allows it.
+        here too, no population limit beyond whatever the town's own resources can actually support.
       </p>
     </div>
   );

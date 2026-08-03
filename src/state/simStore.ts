@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { MAX_POPULATION, type ActiveConversation, type AffinityPoint, type Agent, type LogEntry, type ModelStats, type SimClock, type World, type Zone } from '../sim/types';
+import type { ActiveConversation, AffinityPoint, Agent, LogEntry, ModelStats, SimClock, World, Zone } from '../sim/types';
 import { buildWorld } from '../sim/world';
 import { createZones } from '../sim/zones';
 import { agentIdCounter } from '../sim/ids';
@@ -113,7 +113,6 @@ export const useSimStore = create<SimState>()(
 
       addAgentConfig: () =>
         set((state) => {
-          if (state.agentConfigs.length >= MAX_POPULATION) return;
           const config: AgentConfig = {
             id: makeAgentConfigId(),
             label: defaultLabelForIndex(state.agentConfigs.length),
