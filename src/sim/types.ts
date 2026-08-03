@@ -58,14 +58,17 @@ export type AgentIntent =
   | { kind: 'satisfy_need'; need: 'energy' | 'fun' }
   | { kind: 'buy_food' }
   | { kind: 'buy_house' }
+  | { kind: 'sell_house' }
   | { kind: 'give_money'; targetId: string; amount: number }
   | { kind: 'take_job'; title: string }
+  | { kind: 'quit_job' }
   | { kind: 'work' }
   | { kind: 'start_family'; targetId: string }
   | { kind: 'propose_banish'; targetId: string; reason: string }
   | { kind: 'propose_admit'; targetId: string; reason: string }
   | { kind: 'vote'; proposalId: string; support: boolean }
   | { kind: 'post_notice'; message: string }
+  | { kind: 'leave_town' }
   | { kind: 'wait' };
 
 /** A role or job title an agent has claimed for itself at a specific zone — entirely

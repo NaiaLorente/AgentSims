@@ -119,11 +119,14 @@ Most browsers exempt `localhost`, but if yours doesn't:
   restaurant, in its own words (a title it makes up, not picked from a
   list) — but only while actually standing at one of those two places, and
   nothing stops two agents from claiming the same one. Holding a job at the
-  shop or restaurant lets an agent work there to earn money. Houses are
+  shop or restaurant lets an agent work there to earn money, and it can quit
+  whenever it wants, freeing it up to claim something else later. Houses are
   different: they can be *bought*
   outright, and buying one is exclusive — once an agent owns a house, only
   they can rest there, so money and shelter actually matter to what an agent
-  can do next. It's a real, if small, economy — entirely opt-in.
+  can do next. A house can also be *sold* back, for less than it cost —
+  a real decision with a real cost, not a free way to bank its value and
+  rebuy later at no loss. It's a real, if small, economy — entirely opt-in.
 - **Money moves between agents, too.** Any agent can hand some of its own
   money to someone standing right next to it, however much it chooses —
   nothing about who gets what or why is suggested. That's the only lever
@@ -159,12 +162,18 @@ Most browsers exempt `localhost`, but if yours doesn't:
   anyone still waiting with no vote yet. Nothing else about politics gets
   this treatment — these are the only places a vote has a mechanical, not
   just social, consequence.
+- **Leaving is also a real, unilateral choice, not just a vote outcome.**
+  Banishment and rejected admission are the town acting on an agent;
+  leaving town is the reverse — entirely one agent's own decision, no vote
+  needed, no one else's say in it. Mechanically it's the same permanent
+  teardown either way, just with a different cause in the log.
 - **Decisions**: when an agent is free, its own assigned model is asked what
   it wants to do — move, walk to a specific place, approach and talk to a
-  nearby agent, say something out loud, rest, have fun, buy food, buy a
-  house, claim a role, work, propose banishing someone, propose admitting a
-  waiting candidate, vote on an open proposal, pin a notice to the board, or
-  do nothing — via a minimal JSON action schema. That schema is the only "instruction" involved; it describes
+  nearby agent, say something out loud, rest, have fun, buy food, buy or
+  sell a house, claim or quit a role, work, propose banishing someone,
+  propose admitting a waiting candidate, vote on an open proposal, pin a
+  notice to the board, leave town for good, or do nothing — via a minimal
+  JSON action schema. That schema is the only "instruction" involved; it describes
   what's mechanically possible, not what the agent should want. Every
   planning prompt also states plainly which place, if any, the agent is
   currently standing in — since several actions (resting, buying, working)

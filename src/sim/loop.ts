@@ -68,6 +68,9 @@ const FUN_RESTORE = 25;
 const FOOD_PRICE = 3;
 const FOOD_RESTORE = 25;
 const HOUSE_PRICE = 50;
+// Deliberately less than HOUSE_PRICE — selling is a real decision with a real cost, not a
+// free way to bank a house's value and rebuy it later at no loss.
+const HOUSE_SELL_REFUND = Math.round(HOUSE_PRICE * 0.6);
 const WORK_PAY = 4;
 const SOCIAL_PER_TURN = 3;
 
@@ -714,6 +717,23 @@ async function requestPlan(agentId: string): Promise<void> {
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
       }
+      case 'sell_house': {
+        const zone = zoneAt(state.zones, a.pos);
+        if (zone && zone.kind === 'house' && zone.ownerId === a.id) {
+          zone.ownerId = null;
+          zone.ownerLabel = null;
+          a.wallet += HOUSE_SELL_REFUND;
+          addMemory(a, now, 'bought', `You sold ${zone.name} for $${HOUSE_SELL_REFUND}. It's no longer yours.`);
+          if (a.model) statsFor(state, a.model).moneyEarned += HOUSE_SELL_REFUND;
+          pushLogEntry(state, { tick: now, text: `${a.label} sold ${zone.name}`, kind: 'event' });
+        } else if (zone && zone.kind === 'house') {
+          addMemory(a, now, 'bought', `You tried to sell ${zone.name}, but you don't own it.`);
+        } else {
+          addMemory(a, now, 'bought', `You tried to sell a house, but there's no house here.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
       case 'give_money': {
         const target = state.agents[intent.targetId];
         if (!target) {
@@ -753,6 +773,18 @@ async function requestPlan(agentId: string): Promise<void> {
           }
         } else {
           addMemory(a, now, 'job', `You tried to claim a role, but there's nowhere here to claim it at.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'quit_job': {
+        if (a.roles.length > 0) {
+          const titles = a.roles.map((r) => `"${r.title}"`).join(', ');
+          a.roles = [];
+          addMemory(a, now, 'job', `You quit your role(s): ${titles}.`);
+          pushLogEntry(state, { tick: now, text: `${a.label} quit their role(s): ${titles}`, kind: 'event' });
+        } else {
+          addMemory(a, now, 'job', `You tried to quit a role, but you don't hold one.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
@@ -915,6 +947,12 @@ async function requestPlan(agentId: string): Promise<void> {
           pushLogEntry(state, { tick: now, text: `${a.label} posted a notice: "${text}"`, kind: 'event' });
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'leave_town': {
+        pushLogEntry(state, { tick: now, text: `${a.label} left town, by their own choice`, kind: 'event' });
+        removeAgent(state, a.id);
+        recordPopulation(state, now);
         break;
       }
       case 'wait':

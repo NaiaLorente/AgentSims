@@ -2,7 +2,7 @@ import type { Agent, ModelStats } from './types';
 
 // Every distinct action kind an agent can take — the denominator for "how much of its own
 // available behavior space has this model actually used," not just "how many actions total."
-export const TOTAL_ACTION_KINDS = 12;
+export const TOTAL_ACTION_KINDS = 19;
 
 /**
  * Cumulative totals (messages spoken, money moved, ever) inflate with agent count and time

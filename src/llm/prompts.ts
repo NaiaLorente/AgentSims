@@ -23,14 +23,17 @@ export const PLANNER_SCHEMA = {
         'satisfy_need',
         'buy_food',
         'buy_house',
+        'sell_house',
         'give_money',
         'take_job',
+        'quit_job',
         'work',
         'start_family',
         'propose_banish',
         'propose_admit',
         'vote',
         'post_notice',
+        'leave_town',
         'wait',
       ],
     },
@@ -194,20 +197,23 @@ You can:
 - rest to restore energy, or have fun, if you're standing at a place suited for it — pick which need
 - buy food, if you're standing at a place that sells it — costs money, restores hunger
 - buy a house, if you're standing at one that's unowned — costs money, makes it yours; only you can rest there afterward
+- sell a house you own, if you're standing at it — you give it up for good, but get some money back
 - give some of your money to someone nearby, however much you choose, if you want to
 - take a job or role, in your own words (a title you make up) — only takes effect at a place that offers work (the shop or the restaurant), and only while you're standing there right now
+- quit a job or role you hold, if you want to — you stop earning from it, and can take up something else later
 - work, if you're standing at the place where you hold a job — earns money
 - ask someone nearby you feel a strong bond with (affinity ${FAMILY_AFFINITY_THRESHOLD} or higher) to start a family — it only actually happens once they've asked you the same thing too, either before or after; asking doesn't commit them to anything, and either of you can just not follow up
 - propose banishing someone from town, in your own words why — it doesn't happen immediately, it becomes a vote everyone else in town can weigh in on, decided by majority once the voting window closes
 - propose admitting someone waiting to join town (see the list below, if anyone's waiting), in your own words why — same vote mechanic as banishing, decided by majority of the current town
 - vote for or against an open proposal, if you want to — you can't vote on a proposal about yourself
 - pin a message to the notice board, if you're standing at it — unlike talking, this stays up and anyone in town can read it later, from anywhere, whether or not they were ever near you
+- leave town for good, entirely your own choice — you're gone, the same as if you'd been banished, just nobody voted on it
 - do nothing
 
 Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it. Going a long stretch without eating or resting has a lasting cost on top of that: you'll visibly decline, and if it goes on long enough you can lose a house you own.
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "propose_banish" | "propose_admit" | "vote" | "post_notice" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), "start_family" (id of someone listed below), "propose_banish" (id of someone in town), or "propose_admit" (id of someone waiting to be admitted), "message": only if action is "say" (what you say), "propose_banish" or "propose_admit" (your reason, in your own words), or "post_notice" (what you're posting), "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "proposalId": only if action is "vote" — id of the proposal from the list below, "support": only if action is "vote" — true to vote for it, false to vote against, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "sell_house" | "give_money" | "take_job" | "quit_job" | "work" | "start_family" | "propose_banish" | "propose_admit" | "vote" | "post_notice" | "leave_town" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), "start_family" (id of someone listed below), "propose_banish" (id of someone in town), or "propose_admit" (id of someone waiting to be admitted), "message": only if action is "say" (what you say), "propose_banish" or "propose_admit" (your reason, in your own words), or "post_notice" (what you're posting), "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "proposalId": only if action is "vote" — id of the proposal from the list below, "support": only if action is "vote" — true to vote for it, false to vote against, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -267,6 +273,8 @@ export function parseIntent(
       return { kind: 'buy_food' };
     case 'buy_house':
       return { kind: 'buy_house' };
+    case 'sell_house':
+      return { kind: 'sell_house' };
     case 'give_money': {
       const amount = typeof resp.amount === 'number' ? Math.floor(resp.amount) : 0;
       if (resp.targetId && validTargetIds.has(resp.targetId) && amount > 0) {
@@ -279,6 +287,8 @@ export function parseIntent(
       if (!title) return { kind: 'wait' };
       return { kind: 'take_job', title };
     }
+    case 'quit_job':
+      return { kind: 'quit_job' };
     case 'work':
       return { kind: 'work' };
     case 'start_family':
@@ -306,6 +316,8 @@ export function parseIntent(
       if (!text) return { kind: 'wait' };
       return { kind: 'post_notice', message: text };
     }
+    case 'leave_town':
+      return { kind: 'leave_town' };
     default:
       return { kind: 'wait' };
   }
