@@ -81,6 +81,21 @@ function clamp100(v: number): number {
   return Math.max(0, Math.min(100, v));
 }
 
+function joinNames(names: string[]): string {
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+}
+
+/** A dead-end failure (wrong place for what you're trying to do) is a lot more useful with the
+ *  actual fix named — same idea as telling an agent where it's currently standing, one step
+ *  further: telling it where it'd need to go instead, so a stated intent ("I need to rest soon")
+ *  has a concrete next action instead of just repeating the same failed attempt in place. */
+function whereForHint(names: string[]): string {
+  return names.length > 0 ? ` ${joinNames(names)} would work — you'd need to go there first.` : '';
+}
+
 function agentSettings(globalSettings: SimState['settings'], agent: Agent): OllamaSettings {
   return { baseUrl: globalSettings.baseUrl, temperature: globalSettings.temperature, model: agent.model };
 }
@@ -438,11 +453,14 @@ async function requestPlan(agentId: string): Promise<void> {
         } else if (kindFits && zone) {
           addMemory(a, now, 'need', `You tried to rest at ${zone.name}, but it's owned by ${zone.ownerLabel}.`);
         } else {
+          const suited = state.zones
+            .filter((z) => (intent.need === 'energy' ? z.kind === 'house' : z.kind === 'park'))
+            .map((z) => z.name);
           addMemory(
             a,
             now,
             'need',
-            `You tried to ${intent.need === 'energy' ? 'rest' : 'have fun'}, but there's nowhere suited for that here.`,
+            `You tried to ${intent.need === 'energy' ? 'rest' : 'have fun'}, but there's nowhere suited for that here.${whereForHint(suited)}`,
           );
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
@@ -459,7 +477,8 @@ async function requestPlan(agentId: string): Promise<void> {
         } else if (sells) {
           addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.`);
         } else {
-          addMemory(a, now, 'bought', `You tried to buy food, but there's nowhere selling it here.`);
+          const sellers = state.zones.filter((z) => z.kind === 'shop' || z.kind === 'restaurant').map((z) => z.name);
+          addMemory(a, now, 'bought', `You tried to buy food, but there's nowhere selling it here.${whereForHint(sellers)}`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
@@ -480,7 +499,9 @@ async function requestPlan(agentId: string): Promise<void> {
         } else if (zone && zone.kind === 'house') {
           addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but it's already owned by ${zone.ownerLabel}.`);
         } else {
-          addMemory(a, now, 'bought', `You tried to buy a house, but there's nowhere to buy one here.`);
+          const unowned = state.zones.filter((z) => z.kind === 'house' && !z.ownerId).map((z) => z.name);
+          const hint = unowned.length > 0 ? whereForHint(unowned) : ' Every house is already owned right now.';
+          addMemory(a, now, 'bought', `You tried to buy a house, but there's nowhere to buy one here.${hint}`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;

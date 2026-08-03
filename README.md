@@ -134,7 +134,11 @@ Most browsers exempt `localhost`, but if yours doesn't:
   currently standing in — since several actions (resting, buying, working)
   only succeed there, leaving that to be inferred from memory alone was
   producing agents stuck repeating a failed action because an earlier walk
-  there hadn't actually landed. The prompts
+  there hadn't actually landed. Trying one of those actions from the wrong
+  place also names the actual place that would work right in the failure
+  memory ("...House A and House B would work — you'd need to go there
+  first."), so a stated intent ("I need to rest soon") has a concrete next
+  action available instead of only ever repeating the same dead end. The prompts
   never mention AI, models, or "free will" as a concept — telling an agent
   what it *is* just gets it talking about that instead of acting, so it's
   only ever told what it can do, in-world, first person. There is no
