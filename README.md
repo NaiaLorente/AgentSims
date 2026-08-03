@@ -125,11 +125,25 @@ Most browsers exempt `localhost`, but if yours doesn't:
   alliances, or rivalries aren't resolved by the engine; they only exist in
   what the agents say and do about them. The **Zones** panel shows who's
   claimed what, where, as a single across-the-map view.
+- **Self-governance has one real lever: banishment.** Roles like "leader of
+  the park" stay purely self-declared, but any agent can also formally
+  *propose* banishing another, in its own words, and any other agent in
+  town can vote for or against while the proposal is open. If more than
+  half of everyone else in town (the target doesn't get a vote on its own
+  fate) backs it before the window closes, the target is actually,
+  permanently removed — houses it owned released back to unowned, pulled
+  out of any conversation it was in, gone from the roster for good, not
+  just narratively declared an outcast. Falling short of that majority
+  fails the proposal and the target stays, with nothing hidden about the
+  tally either way — the **Governance** panel shows every open and recently
+  resolved proposal, who proposed it, why, and the running vote count.
+  Nothing else about politics gets this treatment — it's the one place a
+  vote has a mechanical, not just social, consequence.
 - **Decisions**: when an agent is free, its own assigned model is asked what
   it wants to do — move, walk to a specific place, approach and talk to a
   nearby agent, say something out loud, rest, have fun, buy food, buy a
-  house, claim a role, work, or do nothing — via a minimal JSON action
-  schema. That schema is the only "instruction" involved; it describes
+  house, claim a role, work, propose banishing someone, vote on an open
+  proposal, or do nothing — via a minimal JSON action schema. That schema is the only "instruction" involved; it describes
   what's mechanically possible, not what the agent should want. Every
   planning prompt also states plainly which place, if any, the agent is
   currently standing in — since several actions (resting, buying, working)

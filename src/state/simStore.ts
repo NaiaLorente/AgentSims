@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { ActiveConversation, AffinityPoint, Agent, LogEntry, ModelStats, SimClock, World, Zone } from '../sim/types';
+import type { ActiveConversation, AffinityPoint, Agent, LogEntry, ModelStats, Proposal, SimClock, World, Zone } from '../sim/types';
 import { buildWorld } from '../sim/world';
 import { createZones } from '../sim/zones';
 import { agentIdCounter } from '../sim/ids';
@@ -44,6 +44,8 @@ export interface SimState {
   modelStats: Record<string, ModelStats>;
   /** Affinity-over-time history for the relationship trend sparklines, capped and append-only. */
   affinityHistory: AffinityPoint[];
+  /** Self-governance banishment proposals, open and resolved — town-wide, not per-agent. */
+  proposals: Proposal[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -98,6 +100,7 @@ export const useSimStore = create<SimState>()(
       activeConversations: {},
       modelStats: {},
       affinityHistory: [],
+      proposals: [],
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
       settings: DEFAULT_CONNECTION_SETTINGS,
@@ -193,6 +196,7 @@ export const useSimStore = create<SimState>()(
           state.activeConversations = {};
           state.modelStats = {};
           state.affinityHistory = [];
+          state.proposals = [];
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;
@@ -210,6 +214,7 @@ export function serializeSnapshot(): {
   zones: Zone[];
   modelStats: Record<string, ModelStats>;
   affinityHistory: AffinityPoint[];
+  proposals: Proposal[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -222,6 +227,7 @@ export function serializeSnapshot(): {
     zones: s.zones,
     modelStats: s.modelStats,
     affinityHistory: s.affinityHistory,
+    proposals: s.proposals,
     log: s.log,
     clock: { ...s.clock, running: false },
     settings: s.settings,
@@ -235,6 +241,7 @@ export function loadSnapshot(snapshot: {
   zones?: Zone[];
   modelStats?: Record<string, ModelStats>;
   affinityHistory?: AffinityPoint[];
+  proposals?: Proposal[];
   log: LogEntry[];
   clock: SimClock;
   settings: ConnectionSettings;
@@ -252,6 +259,7 @@ export function loadSnapshot(snapshot: {
     state.zones = snapshot.zones ?? createZones();
     state.modelStats = snapshot.modelStats ?? {};
     state.affinityHistory = snapshot.affinityHistory ?? [];
+    state.proposals = snapshot.proposals ?? [];
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
     state.settings = snapshot.settings;

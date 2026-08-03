@@ -1,4 +1,4 @@
-import { FAMILY_AFFINITY_THRESHOLD, WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Zone } from '../sim/types';
+import { FAMILY_AFFINITY_THRESHOLD, WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Proposal, type Zone } from '../sim/types';
 import { formatMemoriesForPrompt } from '../sim/memory';
 import { zoneAt } from '../sim/zones';
 
@@ -27,6 +27,8 @@ export const PLANNER_SCHEMA = {
         'take_job',
         'work',
         'start_family',
+        'propose_banish',
+        'vote',
         'wait',
       ],
     },
@@ -36,6 +38,8 @@ export const PLANNER_SCHEMA = {
     need: { type: 'string', enum: ['energy', 'fun'] },
     amount: { type: 'number' },
     title: { type: 'string' },
+    proposalId: { type: 'string' },
+    support: { type: 'boolean' },
     thought: { type: 'string' },
   },
   required: ['action'],
@@ -49,6 +53,8 @@ export interface PlannerResponse {
   need?: string;
   amount?: number;
   title?: string;
+  proposalId?: string;
+  support?: boolean;
   thought?: string;
 }
 
@@ -123,7 +129,34 @@ function describeSelfNarrative(agent: Agent): string {
   return `\n\nHow you'd describe yourself: "${agent.selfNarrative}"`;
 }
 
-export function buildPlannerPrompt(agent: Agent, nearbyAgents: Agent[], zones: Zone[]): { system: string; user: string } {
+/** Everyone in town, not just who's nearby — banishing someone is a town-wide civic act, not a
+ *  physical one, so it isn't limited to whoever happens to be within talking distance. */
+function describeCommunity(agent: Agent, allAgents: Agent[]): string {
+  const others = allAgents.filter((o) => o.id !== agent.id);
+  if (others.length === 0) return '';
+  const lines = others.map((o) => `- ${o.label} (id: "${o.id}")`).join('\n');
+  return `\n\nEveryone currently in town:\n${lines}`;
+}
+
+function describeProposals(proposals: Proposal[]): string {
+  const open = proposals.filter((p) => p.status === 'open');
+  if (open.length === 0) return '';
+  const lines = open
+    .map(
+      (p) =>
+        `- id: "${p.id}" — ${p.proposerLabel} proposed banishing ${p.targetLabel}: "${p.reason}" (${p.votesFor.length} for, ${p.votesAgainst.length} against so far)`,
+    )
+    .join('\n');
+  return `\n\nOpen votes on banishing someone from town:\n${lines}`;
+}
+
+export function buildPlannerPrompt(
+  agent: Agent,
+  nearbyAgents: Agent[],
+  zones: Zone[],
+  allAgents: Agent[],
+  proposals: Proposal[],
+): { system: string; user: string } {
   const system = `You are ${agent.label}.
 
 You can:
@@ -138,12 +171,14 @@ You can:
 - take a job or role, in your own words (a title you make up) — only takes effect at a place that offers work (the shop or the restaurant), and only while you're standing there right now
 - work, if you're standing at the place where you hold a job — earns money
 - ask someone nearby you feel a strong bond with (affinity ${FAMILY_AFFINITY_THRESHOLD} or higher) to start a family — it only actually happens once they've asked you the same thing too, either before or after; asking doesn't commit them to anything, and either of you can just not follow up
+- propose banishing someone from town, in your own words why — it doesn't happen immediately, it becomes a vote everyone else in town can weigh in on, decided by majority once the voting window closes
+- vote for or against an open banishment proposal, if you want to — you can't vote on a proposal about yourself
 - do nothing
 
 Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it. Going a long stretch without eating or resting has a lasting cost on top of that: you'll visibly decline, and if it goes on long enough you can lose a house you own.
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), or "start_family" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "propose_banish" | "vote" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), "start_family" (id of someone listed below), or "propose_banish" (id of someone in town), "message": only if action is "say" (what you say) or "propose_banish" (your reason, in your own words), "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "proposalId": only if action is "vote" — id of the proposal from the list below, "support": only if action is "vote" — true to vote for it, false to vote against, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -156,7 +191,7 @@ Respond ONLY with JSON of this shape:
   const user = `${describeSelf(agent, currentZone)}${describeSelfNarrative(agent)}${describeReflections(agent)}${describeRelationships(agent)}
 
 People nearby:
-${nearbyDesc}${zonesBlock}
+${nearbyDesc}${zonesBlock}${describeCommunity(agent, allAgents)}${describeProposals(proposals)}
 
 What's happened so far:
 ${formatMemoriesForPrompt(agent, 14)}
@@ -166,7 +201,13 @@ What do you do?`;
   return { system, user };
 }
 
-export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>, validZoneIds: Set<string>): AgentIntent {
+export function parseIntent(
+  resp: PlannerResponse,
+  validTargetIds: Set<string>,
+  validZoneIds: Set<string>,
+  validCommunityIds: Set<string>,
+  validProposalIds: Set<string>,
+): AgentIntent {
   switch (resp.action) {
     case 'move': {
       const dir = resp.direction;
@@ -213,6 +254,16 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>, 
     case 'start_family':
       if (resp.targetId && validTargetIds.has(resp.targetId)) {
         return { kind: 'start_family', targetId: resp.targetId };
+      }
+      return { kind: 'wait' };
+    case 'propose_banish':
+      if (resp.targetId && validCommunityIds.has(resp.targetId)) {
+        return { kind: 'propose_banish', targetId: resp.targetId, reason: (resp.message ?? '').trim().slice(0, 200) };
+      }
+      return { kind: 'wait' };
+    case 'vote':
+      if (resp.proposalId && validProposalIds.has(resp.proposalId) && typeof resp.support === 'boolean') {
+        return { kind: 'vote', proposalId: resp.proposalId, support: resp.support };
       }
       return { kind: 'wait' };
     default:

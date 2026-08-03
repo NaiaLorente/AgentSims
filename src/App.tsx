@@ -5,6 +5,7 @@ import { SettingsPanel } from './ui/SettingsPanel';
 import { AgentInspector } from './ui/AgentInspector';
 import { EventLog } from './ui/EventLog';
 import { ZonesPanel } from './ui/ZonesPanel';
+import { GovernancePanel } from './ui/GovernancePanel';
 import { LiveConversations } from './ui/LiveConversations';
 import { ModelDashboard } from './ui/ModelDashboard';
 import { startLoopWatcher } from './sim/loop';
@@ -41,6 +42,7 @@ export default function App() {
           <SettingsPanel />
           <AgentInspector />
           <ZonesPanel />
+          <GovernancePanel />
         </div>
       </div>
 

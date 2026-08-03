@@ -6,6 +6,7 @@ import {
   type Direction,
   type LogEntry,
   type ModelStats,
+  type Proposal,
   type Vec2,
   type WalkGoal,
 } from './types';
@@ -74,10 +75,20 @@ const CONDITION_RECOVER_PER_TICK = 0.08;
  *  much later chance encounter doesn't consummate on a stale ask. */
 const FAMILY_PROPOSAL_EXPIRY_TICKS = 30;
 
+/** How long a banishment vote stays open before it resolves one way or the other. */
+const PROPOSAL_VOTING_TICKS = 40;
+const MAX_PROPOSALS = 50;
+
 let conversationCounter = 0;
 function makeConversationId(): string {
   conversationCounter += 1;
   return `conv_${Date.now().toString(36)}_${conversationCounter}`;
+}
+
+let proposalCounter = 0;
+function makeProposalId(): string {
+  proposalCounter += 1;
+  return `prop_${Date.now().toString(36)}_${proposalCounter}`;
 }
 
 function chebyshev(a: Vec2, b: Vec2): number {
@@ -293,6 +304,69 @@ async function runTick(): Promise<void> {
     });
     for (const { id, since } of toRenarrate) void requestSelfNarrative(id, since);
   }
+
+  // Governance resolves on its own deadline — purely mechanical, no model call needed, so it
+  // just happens directly rather than following the async request pattern above.
+  const dueProposals = afterMovement.proposals.some((p) => p.status === 'open' && tick >= p.resolvesAtTick);
+  if (dueProposals) {
+    useSimStore.getState().mutate((state) => {
+      for (const proposal of state.proposals) {
+        if (proposal.status !== 'open' || tick < proposal.resolvesAtTick) continue;
+        const target = state.agents[proposal.targetId];
+        const eligibleVoters = state.agentOrder.filter((id) => id !== proposal.targetId).length;
+        const passed = !!target && eligibleVoters > 0 && proposal.votesFor.length > eligibleVoters / 2;
+        proposal.status = passed ? 'passed' : 'failed';
+        if (passed && target) {
+          pushLogEntry(state, {
+            tick,
+            text: `${target.label} was banished from the town (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
+            kind: 'event',
+          });
+          banishAgent(state, proposal.targetId);
+        } else {
+          const label = target?.label ?? proposal.targetLabel;
+          if (target) addMemory(target, tick, 'governance', `A vote to banish you failed — you're still here.`);
+          pushLogEntry(state, {
+            tick,
+            text: `A vote to banish ${label} failed (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
+            kind: 'event',
+          });
+        }
+      }
+    });
+  }
+}
+
+/** Actually removes an agent from the town — the one real, permanent consequence self-governance
+ *  has teeth to enforce. Releases any house it owned back to unowned, drops it from whatever
+ *  conversation it's mid-turn in, and strips it from agentConfigs too so a later Reset reflects
+ *  the town as it now stands rather than resurrecting it. */
+function banishAgent(state: SimState, agentId: string): void {
+  const agent = state.agents[agentId];
+  if (!agent) return;
+
+  for (const zone of state.zones) {
+    if (zone.ownerId === agentId) {
+      zone.ownerId = null;
+      zone.ownerLabel = null;
+    }
+  }
+
+  if (agent.activity.kind === 'talking') {
+    const conv = state.activeConversations[agent.activity.conversationId];
+    if (conv) {
+      const idx = conv.participantIds.indexOf(agentId);
+      if (idx !== -1) {
+        conv.participantIds.splice(idx, 1);
+        conv.participantLabels.splice(idx, 1);
+      }
+    }
+  }
+
+  delete state.agents[agentId];
+  state.agentOrder = state.agentOrder.filter((id) => id !== agentId);
+  state.agentConfigs = state.agentConfigs.filter((c) => c.id !== agentId);
+  if (state.selectedAgentId === agentId) state.selectedAgentId = null;
 }
 
 function stepAgent(state: SimState, agent: Agent, tick: number, pending: string[]): void {
@@ -371,8 +445,9 @@ async function requestPlan(agentId: string): Promise<void> {
   const nearby = state0.agentOrder
     .map((id) => state0.agents[id])
     .filter((o): o is Agent => !!o && o.id !== agentId && chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
+  const allAgents = state0.agentOrder.map((id) => state0.agents[id]).filter((o): o is Agent => !!o);
 
-  const { system, user } = buildPlannerPrompt(agent, nearby, state0.zones);
+  const { system, user } = buildPlannerPrompt(agent, nearby, state0.zones, allAgents, state0.proposals);
   const resp = await chatJSON<PlannerResponse>(
     agentSettings(state0.settings, agent),
     { system, user, schema: PLANNER_SCHEMA },
@@ -380,7 +455,9 @@ async function requestPlan(agentId: string): Promise<void> {
   );
   const validTargets = new Set(nearby.map((o) => o.id));
   const validZones = new Set(state0.zones.map((z) => z.id));
-  const intent = parseIntent(resp, validTargets, validZones);
+  const validCommunity = new Set(allAgents.filter((o) => o.id !== agentId).map((o) => o.id));
+  const validProposals = new Set(state0.proposals.filter((p) => p.status === 'open').map((p) => p.id));
+  const intent = parseIntent(resp, validTargets, validZones, validCommunity, validProposals);
 
   useSimStore.getState().mutate((state) => {
     const a = state.agents[agentId];
@@ -605,6 +682,58 @@ async function requestPlan(agentId: string): Promise<void> {
           a.familyProposalTick = now;
           addMemory(a, now, 'family', `You asked ${target.label} to start a family together.`);
           addMemory(target, now, 'family', `${a.label} wants to start a family with you.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'propose_banish': {
+        const target = state.agents[intent.targetId];
+        const openAgainstTarget = target && state.proposals.some((p) => p.status === 'open' && p.targetId === target.id);
+        if (!target) {
+          addMemory(a, now, 'governance', `You wanted to propose banishing someone, but couldn't find who you meant.`);
+        } else if (openAgainstTarget) {
+          addMemory(a, now, 'governance', `You wanted to propose banishing ${target.label}, but a vote on that is already underway.`);
+        } else {
+          const reason = intent.reason.trim().slice(0, 200) || 'no reason given';
+          const proposal: Proposal = {
+            id: makeProposalId(),
+            proposerId: a.id,
+            proposerLabel: a.label,
+            targetId: target.id,
+            targetLabel: target.label,
+            reason,
+            votesFor: [],
+            votesAgainst: [],
+            createdTick: now,
+            resolvesAtTick: now + PROPOSAL_VOTING_TICKS,
+            status: 'open',
+          };
+          state.proposals.push(proposal);
+          if (state.proposals.length > MAX_PROPOSALS) {
+            state.proposals.splice(0, state.proposals.length - MAX_PROPOSALS);
+          }
+          addMemory(a, now, 'governance', `You proposed banishing ${target.label}: "${reason}"`);
+          addMemory(target, now, 'governance', `${a.label} proposed banishing you: "${reason}"`);
+          pushLogEntry(state, {
+            tick: now,
+            text: `${a.label} proposed banishing ${target.label}: "${reason}"`,
+            kind: 'event',
+          });
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'vote': {
+        const proposal = state.proposals.find((p) => p.id === intent.proposalId);
+        if (!proposal || proposal.status !== 'open') {
+          addMemory(a, now, 'governance', `You tried to vote, but couldn't find an open proposal to vote on.`);
+        } else if (proposal.targetId === a.id) {
+          addMemory(a, now, 'governance', `You can't vote on your own banishment.`);
+        } else {
+          proposal.votesFor = proposal.votesFor.filter((id) => id !== a.id);
+          proposal.votesAgainst = proposal.votesAgainst.filter((id) => id !== a.id);
+          (intent.support ? proposal.votesFor : proposal.votesAgainst).push(a.id);
+          addMemory(a, now, 'governance', `You voted ${intent.support ? 'for' : 'against'} banishing ${proposal.targetLabel}.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;

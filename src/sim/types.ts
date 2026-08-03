@@ -37,7 +37,8 @@ export type MemoryKind =
   | 'relationship' // how it feels about another agent changed
   | 'reflection' // a higher-level takeaway synthesized from raw memory, not a single event
   | 'gave' // money changed hands with another agent
-  | 'family'; // a family proposal made, received, or a child born
+  | 'family' // a family proposal made, received, or a child born
+  | 'governance'; // a banishment proposed, voted on, or resolved
 
 export interface MemoryEvent {
   id: string;
@@ -60,6 +61,8 @@ export type AgentIntent =
   | { kind: 'take_job'; title: string }
   | { kind: 'work' }
   | { kind: 'start_family'; targetId: string }
+  | { kind: 'propose_banish'; targetId: string; reason: string }
+  | { kind: 'vote'; proposalId: string; support: boolean }
   | { kind: 'wait' };
 
 /** A role or job title an agent has claimed for itself at a specific zone — entirely
@@ -79,6 +82,26 @@ export interface Relationship {
   affinity: number; // -100..100
   label: string; // free text, in the agent's own words
   updatedTick: number;
+}
+
+export type ProposalStatus = 'open' | 'passed' | 'failed';
+
+/** A self-governance proposal to banish an agent from the town — the one form of "politics" with
+ *  a real, mechanical effect: a passed proposal actually removes the target, permanently. Not a
+ *  general law-making system, just this one specific, high-stakes vote, since that's the actual
+ *  gap between roles being purely cosmetic and self-governance having real teeth. */
+export interface Proposal {
+  id: string;
+  proposerId: string;
+  proposerLabel: string;
+  targetId: string;
+  targetLabel: string;
+  reason: string; // in the proposer's own words
+  votesFor: string[]; // agent ids
+  votesAgainst: string[]; // agent ids
+  createdTick: number;
+  resolvesAtTick: number;
+  status: ProposalStatus;
 }
 
 /** Below this, an agent's condition counts as "worse off" — visible on the canvas and in the
