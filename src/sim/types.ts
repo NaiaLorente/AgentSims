@@ -36,7 +36,8 @@ export type MemoryKind =
   | 'bought' // spent money on food
   | 'relationship' // how it feels about another agent changed
   | 'reflection' // a higher-level takeaway synthesized from raw memory, not a single event
-  | 'gave'; // money changed hands with another agent
+  | 'gave' // money changed hands with another agent
+  | 'family'; // a family proposal made, received, or a child born
 
 export interface MemoryEvent {
   id: string;
@@ -58,6 +59,7 @@ export type AgentIntent =
   | { kind: 'give_money'; targetId: string; amount: number }
   | { kind: 'take_job'; title: string }
   | { kind: 'work' }
+  | { kind: 'start_family'; targetId: string }
   | { kind: 'wait' };
 
 /** A role or job title an agent has claimed for itself at a specific zone — entirely
@@ -83,6 +85,15 @@ export interface Relationship {
  *  inspector, and mentioned in its own memory. Shared by the sim loop and UI so there's one
  *  source of truth for the cutoff. */
 export const WORSE_OFF_THRESHOLD = 40;
+
+/** How strong a relationship's affinity has to be, on both sides independently, before either
+ *  agent can propose starting a family with the other — matches the "loving" color band already
+ *  used for relationship bars/sparklines, so the UI and the mechanic agree on what "strong" means. */
+export const FAMILY_AFFINITY_THRESHOLD = 60;
+
+/** Hard ceiling on total agents (founding + spawned). Shared by the sim loop and UI so a family
+ *  proposal that can't possibly succeed says so up front instead of leaving a dangling proposal. */
+export const MAX_POPULATION = 10;
 
 export interface Needs {
   hunger: number; // 0..100, 100 = fully satisfied
@@ -130,6 +141,15 @@ export interface Agent {
   wallet: number;
   roles: AgentRole[];
   relationships: Record<string, Relationship>; // keyed by other agent's id
+  /** This agent's own outstanding "start a family" ask, if any — cleared once it either matches
+   *  a reciprocal proposal (a child results) or goes stale. Consent has to come from both sides,
+   *  each expressed through their own model's own choice, not granted on one agent's behalf. */
+  familyProposalTo: string | null;
+  familyProposalTick: number;
+  /** Set only on spawned agents — the two agents whose mutual proposal produced this one. Null
+   *  for anyone present at the start or added manually through the roster. */
+  parentIds: [string, string] | null;
+  childIds: string[];
 }
 
 export interface LogEntry {

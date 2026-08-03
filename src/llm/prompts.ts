@@ -1,4 +1,4 @@
-import { WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Zone } from '../sim/types';
+import { FAMILY_AFFINITY_THRESHOLD, WORSE_OFF_THRESHOLD, type Agent, type AgentIntent, type Zone } from '../sim/types';
 import { formatMemoriesForPrompt } from '../sim/memory';
 import { zoneAt } from '../sim/zones';
 
@@ -26,6 +26,7 @@ export const PLANNER_SCHEMA = {
         'give_money',
         'take_job',
         'work',
+        'start_family',
         'wait',
       ],
     },
@@ -123,12 +124,13 @@ You can:
 - give some of your money to someone nearby, however much you choose, if you want to
 - take a job or role somewhere, in your own words (a title you make up) — only takes effect if you're standing at the place right now
 - work, if you're standing at the place where you hold a job — earns money
+- ask someone nearby you feel a strong bond with (affinity ${FAMILY_AFFINITY_THRESHOLD} or higher) to start a family — it only actually happens once they've asked you the same thing too, either before or after; asking doesn't commit them to anything, and either of you can just not follow up
 - do nothing
 
 Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it. Going a long stretch without eating or resting has a lasting cost on top of that: you'll visibly decline, and if it goes on long enough you can lose a house you own.
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), or "give_money" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), or "start_family" (id of someone listed below), "message": only if action is "say", "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -195,6 +197,11 @@ export function parseIntent(resp: PlannerResponse, validTargetIds: Set<string>, 
     }
     case 'work':
       return { kind: 'work' };
+    case 'start_family':
+      if (resp.targetId && validTargetIds.has(resp.targetId)) {
+        return { kind: 'start_family', targetId: resp.targetId };
+      }
+      return { kind: 'wait' };
     default:
       return { kind: 'wait' };
   }

@@ -69,10 +69,59 @@ export function createAgentFromConfig(config: AgentConfig, world: World, index: 
     wallet: STARTING_WALLET,
     roles: [],
     relationships: {},
+    familyProposalTo: null,
+    familyProposalTick: 0,
+    parentIds: null,
+    childIds: [],
   };
 }
 
 /** Builds the live, running agents for a simulation from the configured roster. */
 export function createAgentsFromConfigs(configs: AgentConfig[], world: World): Agent[] {
   return configs.map((config, index) => createAgentFromConfig(config, world, index));
+}
+
+function clampToWorld(world: World, pos: { x: number; y: number }): { x: number; y: number } {
+  return {
+    x: Math.max(0, Math.min(world.width - 1, pos.x)),
+    y: Math.max(0, Math.min(world.height - 1, pos.y)),
+  };
+}
+
+/** Builds the config + live agent for a child produced by two consenting parents. Spawns near
+ *  the parents' midpoint, with fresh needs/wallet of its own (needs aren't hereditary — only
+ *  which two agents made it is) and one parent's model picked at random so it's immediately
+ *  part of the run rather than sitting inert until manually assigned. */
+export function createChildAgent(parentA: Agent, parentB: Agent, world: World): { config: AgentConfig; agent: Agent } {
+  const id = makeAgentConfigId();
+  const label = defaultLabelForIndex(Number(id) - 1);
+  const model = Math.random() < 0.5 ? parentA.model : parentB.model;
+  const config: AgentConfig = { id, label, model };
+  const pos = clampToWorld(world, {
+    x: Math.round((parentA.pos.x + parentB.pos.x) / 2),
+    y: Math.round((parentA.pos.y + parentB.pos.y) / 2),
+  });
+  const agent: Agent = {
+    id,
+    label,
+    model,
+    color: colorForId(id),
+    pos,
+    path: [],
+    activity: { kind: 'idle', cooldownUntilTick: 0 },
+    memory: [],
+    reflections: [],
+    lastReflectionTick: 0,
+    speech: null,
+    needs: { hunger: STARTING_NEED, energy: STARTING_NEED, social: STARTING_NEED, fun: STARTING_NEED },
+    condition: 100,
+    wallet: STARTING_WALLET,
+    roles: [],
+    relationships: {},
+    familyProposalTo: null,
+    familyProposalTick: 0,
+    parentIds: [parentA.id, parentB.id],
+    childIds: [],
+  };
+  return { config, agent };
 }

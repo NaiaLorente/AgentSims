@@ -164,6 +164,13 @@ export function AgentInspector() {
               Currently: {activityLabel(agent.activity.kind)} · ${agent.wallet}
               {ownedHouses.length > 0 && <> · owns {ownedHouses.map((h) => h.name).join(', ')}</>}
             </p>
+            {(agent.parentIds || agent.childIds.length > 0) && (
+              <p className="mt-1 text-[11px] text-white/40">
+                {agent.parentIds && <>Child of {agent.parentIds.map((id) => agents[id]?.label ?? '(gone)').join(' and ')}</>}
+                {agent.parentIds && agent.childIds.length > 0 && ' · '}
+                {agent.childIds.length > 0 && <>Children: {agent.childIds.map((id) => agents[id]?.label ?? '(gone)').join(', ')}</>}
+              </p>
+            )}
           </div>
 
           <div>

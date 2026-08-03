@@ -156,6 +156,18 @@ Most browsers exempt `localhost`, but if yours doesn't:
   agent and visible in its inspector. It's deliberately asymmetric: one
   agent can consider another a friend without that being mutual, and there's
   no fixed ladder of relationship stages the engine imposes.
+- **Lineage.** Once two agents each independently feel a strong enough bond
+  toward the other (affinity 60+, checked on both sides separately), either
+  can ask the other to start a family — but nothing happens until the other
+  has asked the same thing back, before or after, on their own. Consent has
+  to come from both models, not just one; asking doesn't commit anyone to
+  anything, and either side can just never follow up. A resulting child
+  spawns with fresh needs of its own, inherits one parent's model at random
+  so it's immediately part of the run, and shows up in every panel — the
+  roster, the canvas, the dashboard — the same as anyone added by hand. A
+  fixed population cap (10 agents total, founding or spawned) keeps this
+  from spiraling on a long unattended run; once it's hit, a proposal that
+  would otherwise succeed just says so instead of quietly failing.
 - **Memory carries across encounters.** Every agent remembers what it's
   said, heard, earned, bought, claimed, and who it's met, and that memory is
   fed back into both its decisions and its next conversation with the same

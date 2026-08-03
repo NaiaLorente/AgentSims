@@ -1,9 +1,20 @@
 import { useSimStore, makeLogId, type SimState } from '../state/simStore';
-import { WORSE_OFF_THRESHOLD, type Agent, type Direction, type LogEntry, type ModelStats, type Vec2, type WalkGoal } from './types';
+import {
+  FAMILY_AFFINITY_THRESHOLD,
+  MAX_POPULATION,
+  WORSE_OFF_THRESHOLD,
+  type Agent,
+  type Direction,
+  type LogEntry,
+  type ModelStats,
+  type Vec2,
+  type WalkGoal,
+} from './types';
 import { findPath } from './pathfinding';
 import { randomTile } from './world';
 import { addMemory, makeMemoryId } from './memory';
 import { zoneAt, zoneCenter } from './zones';
+import { createChildAgent } from './agents';
 import {
   buildConversationTurnPrompt,
   buildPlannerPrompt,
@@ -50,6 +61,11 @@ const CONDITION_CRITICAL_NEED = 15;
 const CONDITION_HEALTHY_NEED = 50;
 const CONDITION_DECAY_PER_TICK = 0.25;
 const CONDITION_RECOVER_PER_TICK = 0.08;
+
+/** How long a "start a family" proposal stays open waiting for the other side to reciprocate,
+ *  in ticks — long enough to survive a few idle-cooldown replanning cycles, short enough that a
+ *  much later chance encounter doesn't consummate on a stale ask. */
+const FAMILY_PROPOSAL_EXPIRY_TICKS = 30;
 
 let conversationCounter = 0;
 function makeConversationId(): string {
@@ -523,6 +539,42 @@ async function requestPlan(agentId: string): Promise<void> {
           addMemory(a, now, 'worked', `You tried to work here, but you don't have a role at this place.`);
         } else {
           addMemory(a, now, 'worked', `You tried to work, but there's no job to do here.`);
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
+      case 'start_family': {
+        const target = state.agents[intent.targetId];
+        const affinity = target ? (a.relationships[target.id]?.affinity ?? 0) : 0;
+        if (!target) {
+          addMemory(a, now, 'family', `You wanted to start a family, but couldn't find who you meant.`);
+        } else if (chebyshev(a.pos, target.pos) > TALK_TRIGGER_RADIUS) {
+          addMemory(a, now, 'family', `You wanted to start a family with ${target.label}, but they weren't close enough.`);
+        } else if (affinity < FAMILY_AFFINITY_THRESHOLD) {
+          addMemory(a, now, 'family', `You considered starting a family with ${target.label}, but don't feel ready for that yet.`);
+        } else if (state.agentOrder.length >= MAX_POPULATION) {
+          addMemory(a, now, 'family', `You wanted to start a family with ${target.label}, but the town has no room for anyone new right now.`);
+        } else if (target.familyProposalTo === a.id && now - target.familyProposalTick <= FAMILY_PROPOSAL_EXPIRY_TICKS) {
+          const { config, agent: child } = createChildAgent(a, target, state.world);
+          state.agentConfigs.push(config);
+          state.agents[child.id] = child;
+          state.agentOrder.push(child.id);
+          a.familyProposalTo = null;
+          target.familyProposalTo = null;
+          a.childIds.push(child.id);
+          target.childIds.push(child.id);
+          addMemory(a, now, 'family', `You and ${target.label} had a child together: ${child.label}.`);
+          addMemory(target, now, 'family', `You and ${a.label} had a child together: ${child.label}.`);
+          pushLogEntry(state, {
+            tick: now,
+            text: `${a.label} and ${target.label} had a child: ${child.label}`,
+            kind: 'event',
+          });
+        } else {
+          a.familyProposalTo = target.id;
+          a.familyProposalTick = now;
+          addMemory(a, now, 'family', `You asked ${target.label} to start a family together.`);
+          addMemory(target, now, 'family', `${a.label} wants to start a family with you.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
