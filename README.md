@@ -138,7 +138,11 @@ Most browsers exempt `localhost`, but if yours doesn't:
   place also names the actual place that would work right in the failure
   memory ("...House A and House B would work — you'd need to go there
   first."), so a stated intent ("I need to rest soon") has a concrete next
-  action available instead of only ever repeating the same dead end. The prompts
+  action available instead of only ever repeating the same dead end. Coming
+  up short on money gets the same treatment: trying to buy something without
+  enough cash names the actual shortfall and points at working a job as the
+  way to close it — pointing at the specific job it already holds if it has
+  one, rather than suggesting it claim a redundant second one. The prompts
   never mention AI, models, or "free will" as a concept — telling an agent
   what it *is* just gets it talking about that instead of acting, so it's
   only ever told what it can do, in-world, first person. There is no

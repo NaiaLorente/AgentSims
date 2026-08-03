@@ -96,6 +96,26 @@ function whereForHint(names: string[]): string {
   return names.length > 0 ? ` ${joinNames(names)} would work — you'd need to go there first.` : '';
 }
 
+/** Same idea again, one step further still: a wallet shortfall is a dead end too, and "not
+ *  enough money" alone leaves an agent no more able to fix that than "not the right place" did —
+ *  naming the actual gap and the one way to close it (work) turns a stated goal it can't afford
+ *  into a concrete next step instead of a loop of identical failed attempts. If it already holds
+ *  a role somewhere, point at working that instead of suggesting it claim a redundant one. */
+function earnMoneyHint(state: SimState, agent: Agent, price: number): string {
+  const shortfall = price - agent.wallet;
+  const roleZoneNames = [
+    ...new Set(
+      agent.roles.map((r) => state.zones.find((z) => z.id === r.zoneId)?.name).filter((n): n is string => !!n),
+    ),
+  ];
+  if (roleZoneNames.length > 0) {
+    return ` You have $${agent.wallet}, short by $${shortfall}. Working your job at ${joinNames(roleZoneNames)} would help you earn the rest.`;
+  }
+  const jobPlaces = state.zones.filter((z) => z.kind === 'shop' || z.kind === 'restaurant').map((z) => z.name);
+  if (jobPlaces.length === 0) return '';
+  return ` You have $${agent.wallet}, short by $${shortfall}. Claiming a role at ${joinNames(jobPlaces)} and working it would help you earn the rest.`;
+}
+
 function agentSettings(globalSettings: SimState['settings'], agent: Agent): OllamaSettings {
   return { baseUrl: globalSettings.baseUrl, temperature: globalSettings.temperature, model: agent.model };
 }
@@ -475,7 +495,8 @@ async function requestPlan(agentId: string): Promise<void> {
           addMemory(a, now, 'bought', `You bought food at ${zone.name} for $${FOOD_PRICE}.`);
           if (a.model) statsFor(state, a.model).moneySpent += FOOD_PRICE;
         } else if (sells) {
-          addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.`);
+          const hint = earnMoneyHint(state, a, FOOD_PRICE);
+          addMemory(a, now, 'bought', `You tried to buy food at ${zone.name}, but didn't have enough money.${hint}`);
         } else {
           const sellers = state.zones.filter((z) => z.kind === 'shop' || z.kind === 'restaurant').map((z) => z.name);
           addMemory(a, now, 'bought', `You tried to buy food, but there's nowhere selling it here.${whereForHint(sellers)}`);
@@ -494,7 +515,8 @@ async function requestPlan(agentId: string): Promise<void> {
             if (a.model) statsFor(state, a.model).moneySpent += HOUSE_PRICE;
             pushLogEntry(state, { tick: now, text: `${a.label} bought ${zone.name}`, kind: 'event' });
           } else {
-            addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but didn't have enough money.`);
+            const hint = earnMoneyHint(state, a, HOUSE_PRICE);
+            addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but didn't have enough money.${hint}`);
           }
         } else if (zone && zone.kind === 'house') {
           addMemory(a, now, 'bought', `You tried to buy ${zone.name}, but it's already owned by ${zone.ownerLabel}.`);
