@@ -387,25 +387,56 @@ async function runTick(): Promise<void> {
       for (const proposal of state.proposals) {
         if (proposal.status !== 'open' || tick < proposal.resolvesAtTick) continue;
         const target = state.agents[proposal.targetId];
-        const eligibleVoters = state.agentOrder.filter((id) => id !== proposal.targetId).length;
-        const passed = !!target && eligibleVoters > 0 && proposal.votesFor.length > eligibleVoters / 2;
-        proposal.status = passed ? 'passed' : 'failed';
-        if (passed && target) {
-          pushLogEntry(state, {
-            tick,
-            text: `${target.label} was banished from the town (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
-            kind: 'event',
-          });
-          removeAgent(state, proposal.targetId);
-          recordPopulation(state, tick);
+
+        if (proposal.kind === 'banish') {
+          const eligibleVoters = state.agentOrder.filter((id) => id !== proposal.targetId).length;
+          const passed = !!target && eligibleVoters > 0 && proposal.votesFor.length > eligibleVoters / 2;
+          proposal.status = passed ? 'passed' : 'failed';
+          if (passed && target) {
+            pushLogEntry(state, {
+              tick,
+              text: `${target.label} was banished from the town (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
+              kind: 'event',
+            });
+            removeAgent(state, proposal.targetId);
+            recordPopulation(state, tick);
+          } else {
+            const label = target?.label ?? proposal.targetLabel;
+            if (target) addMemory(target, tick, 'governance', `A vote to banish you failed — you're still here.`);
+            pushLogEntry(state, {
+              tick,
+              text: `A vote to banish ${label} failed (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
+              kind: 'event',
+            });
+          }
         } else {
-          const label = target?.label ?? proposal.targetLabel;
-          if (target) addMemory(target, tick, 'governance', `A vote to banish you failed — you're still here.`);
-          pushLogEntry(state, {
-            tick,
-            text: `A vote to banish ${label} failed (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
-            kind: 'event',
-          });
+          // 'admit' — the candidate isn't in agentOrder yet, so every current active member is
+          // an eligible voter, none excluded (there's no "voting on yourself" case here; a
+          // pending candidate never gets planned, so it can never cast a vote at all).
+          const eligibleVoters = state.agentOrder.length;
+          const passed = !!target && eligibleVoters > 0 && proposal.votesFor.length > eligibleVoters / 2;
+          proposal.status = passed ? 'passed' : 'failed';
+          if (passed && target) {
+            target.pending = false;
+            state.agentOrder.push(target.id);
+            addMemory(target, tick, 'governance', 'You were admitted to the town.');
+            pushLogEntry(state, {
+              tick,
+              text: `${target.label} was admitted to the town (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against)`,
+              kind: 'event',
+            });
+            recordPopulation(state, tick);
+          } else {
+            const label = target?.label ?? proposal.targetLabel;
+            pushLogEntry(state, {
+              tick,
+              text: `A vote to admit ${label} failed (${proposal.votesFor.length} for, ${proposal.votesAgainst.length} against) — not admitted`,
+              kind: 'event',
+            });
+            // Rejected, not left in limbo — same permanent teardown as banishment/collapse, so a
+            // later Reset doesn't resurrect a candidate the town already said no to.
+            if (target) removeAgent(state, target.id);
+          }
         }
       }
     });
@@ -526,8 +557,17 @@ async function requestPlan(agentId: string): Promise<void> {
     .map((id) => state0.agents[id])
     .filter((o): o is Agent => !!o && o.id !== agentId && chebyshev(o.pos, agent.pos) <= NEARBY_RADIUS);
   const allAgents = state0.agentOrder.map((id) => state0.agents[id]).filter((o): o is Agent => !!o);
+  const pendingAgents = Object.values(state0.agents).filter((o): o is Agent => !!o && o.pending);
 
-  const { system, user } = buildPlannerPrompt(agent, nearby, state0.zones, allAgents, state0.proposals, state0.notices);
+  const { system, user } = buildPlannerPrompt(
+    agent,
+    nearby,
+    state0.zones,
+    allAgents,
+    state0.proposals,
+    state0.notices,
+    pendingAgents,
+  );
   const resp = await chatJSON<PlannerResponse>(
     agentSettings(state0.settings, agent),
     { system, user, schema: PLANNER_SCHEMA },
@@ -537,7 +577,8 @@ async function requestPlan(agentId: string): Promise<void> {
   const validZones = new Set(state0.zones.map((z) => z.id));
   const validCommunity = new Set(allAgents.filter((o) => o.id !== agentId).map((o) => o.id));
   const validProposals = new Set(state0.proposals.filter((p) => p.status === 'open').map((p) => p.id));
-  const intent = parseIntent(resp, validTargets, validZones, validCommunity, validProposals);
+  const validPending = new Set(pendingAgents.map((o) => o.id));
+  const intent = parseIntent(resp, validTargets, validZones, validCommunity, validProposals, validPending);
 
   useSimStore.getState().mutate((state) => {
     const a = state.agents[agentId];
@@ -778,6 +819,7 @@ async function requestPlan(agentId: string): Promise<void> {
           const reason = intent.reason.trim().slice(0, 200) || 'no reason given';
           const proposal: Proposal = {
             id: makeProposalId(),
+            kind: 'banish',
             proposerId: a.id,
             proposerLabel: a.label,
             targetId: target.id,
@@ -804,17 +846,56 @@ async function requestPlan(agentId: string): Promise<void> {
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;
       }
+      case 'propose_admit': {
+        const candidate = state.agents[intent.targetId];
+        const openForCandidate =
+          candidate && state.proposals.some((p) => p.status === 'open' && p.targetId === candidate.id);
+        if (!candidate || !candidate.pending) {
+          addMemory(a, now, 'governance', `You wanted to propose admitting someone, but couldn't find anyone waiting to join.`);
+        } else if (openForCandidate) {
+          addMemory(a, now, 'governance', `You wanted to propose admitting ${candidate.label}, but a vote on that is already underway.`);
+        } else {
+          const reason = intent.reason.trim().slice(0, 200) || 'no reason given';
+          const proposal: Proposal = {
+            id: makeProposalId(),
+            kind: 'admit',
+            proposerId: a.id,
+            proposerLabel: a.label,
+            targetId: candidate.id,
+            targetLabel: candidate.label,
+            reason,
+            votesFor: [],
+            votesAgainst: [],
+            createdTick: now,
+            resolvesAtTick: now + PROPOSAL_VOTING_TICKS,
+            status: 'open',
+          };
+          state.proposals.push(proposal);
+          if (state.proposals.length > MAX_PROPOSALS) {
+            state.proposals.splice(0, state.proposals.length - MAX_PROPOSALS);
+          }
+          addMemory(a, now, 'governance', `You proposed admitting ${candidate.label}: "${reason}"`);
+          pushLogEntry(state, {
+            tick: now,
+            text: `${a.label} proposed admitting ${candidate.label}: "${reason}"`,
+            kind: 'event',
+          });
+        }
+        a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
+        break;
+      }
       case 'vote': {
         const proposal = state.proposals.find((p) => p.id === intent.proposalId);
         if (!proposal || proposal.status !== 'open') {
           addMemory(a, now, 'governance', `You tried to vote, but couldn't find an open proposal to vote on.`);
         } else if (proposal.targetId === a.id) {
-          addMemory(a, now, 'governance', `You can't vote on your own banishment.`);
+          addMemory(a, now, 'governance', `You can't vote on a proposal about yourself.`);
         } else {
           proposal.votesFor = proposal.votesFor.filter((id) => id !== a.id);
           proposal.votesAgainst = proposal.votesAgainst.filter((id) => id !== a.id);
           (intent.support ? proposal.votesFor : proposal.votesAgainst).push(a.id);
-          addMemory(a, now, 'governance', `You voted ${intent.support ? 'for' : 'against'} banishing ${proposal.targetLabel}.`);
+          const verb = proposal.kind === 'admit' ? 'admitting' : 'banishing';
+          addMemory(a, now, 'governance', `You voted ${intent.support ? 'for' : 'against'} ${verb} ${proposal.targetLabel}.`);
         }
         a.activity = { kind: 'idle', cooldownUntilTick: now + IDLE_COOLDOWN_TICKS };
         break;

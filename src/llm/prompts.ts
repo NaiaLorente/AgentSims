@@ -28,6 +28,7 @@ export const PLANNER_SCHEMA = {
         'work',
         'start_family',
         'propose_banish',
+        'propose_admit',
         'vote',
         'post_notice',
         'wait',
@@ -144,12 +145,22 @@ function describeProposals(proposals: Proposal[]): string {
   const open = proposals.filter((p) => p.status === 'open');
   if (open.length === 0) return '';
   const lines = open
-    .map(
-      (p) =>
-        `- id: "${p.id}" — ${p.proposerLabel} proposed banishing ${p.targetLabel}: "${p.reason}" (${p.votesFor.length} for, ${p.votesAgainst.length} against so far)`,
-    )
+    .map((p) => {
+      const verb = p.kind === 'admit' ? 'admitting' : 'banishing';
+      return `- id: "${p.id}" — ${p.proposerLabel} proposed ${verb} ${p.targetLabel}: "${p.reason}" (${p.votesFor.length} for, ${p.votesAgainst.length} against so far)`;
+    })
     .join('\n');
-  return `\n\nOpen votes on banishing someone from town:\n${lines}`;
+  return `\n\nOpen votes:\n${lines}`;
+}
+
+/** Candidates waiting in the "waiting room" — added to the roster but not yet part of the town,
+ *  inert until someone here proposes admitting them and a vote actually decides it. Without this
+ *  list, no active agent would ever know a candidate exists to propose admitting in the first
+ *  place. */
+function describePendingAgents(pendingAgents: Agent[]): string {
+  if (pendingAgents.length === 0) return '';
+  const lines = pendingAgents.map((o) => `- ${o.label} (id: "${o.id}")`).join('\n');
+  return `\n\nWaiting to be admitted to town, not part of it yet:\n${lines}`;
 }
 
 /** The notice board's actual current contents — everyone gets this regardless of where they're
@@ -171,6 +182,7 @@ export function buildPlannerPrompt(
   allAgents: Agent[],
   proposals: Proposal[],
   notices: Notice[],
+  pendingAgents: Agent[],
 ): { system: string; user: string } {
   const system = `You are ${agent.label}.
 
@@ -187,14 +199,15 @@ You can:
 - work, if you're standing at the place where you hold a job — earns money
 - ask someone nearby you feel a strong bond with (affinity ${FAMILY_AFFINITY_THRESHOLD} or higher) to start a family — it only actually happens once they've asked you the same thing too, either before or after; asking doesn't commit them to anything, and either of you can just not follow up
 - propose banishing someone from town, in your own words why — it doesn't happen immediately, it becomes a vote everyone else in town can weigh in on, decided by majority once the voting window closes
-- vote for or against an open banishment proposal, if you want to — you can't vote on a proposal about yourself
+- propose admitting someone waiting to join town (see the list below, if anyone's waiting), in your own words why — same vote mechanic as banishing, decided by majority of the current town
+- vote for or against an open proposal, if you want to — you can't vote on a proposal about yourself
 - pin a message to the notice board, if you're standing at it — unlike talking, this stays up and anyone in town can read it later, from anywhere, whether or not they were ever near you
 - do nothing
 
 Being very tired, hungry, or bored doesn't stop you from doing anything — but it can make you slower or less effective at it. Going a long stretch without eating or resting has a lasting cost on top of that: you'll visibly decline, and if it goes on long enough you can lose a house you own.
 
 Respond ONLY with JSON of this shape:
-{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "propose_banish" | "vote" | "post_notice" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), "start_family" (id of someone listed below), or "propose_banish" (id of someone in town), "message": only if action is "say" (what you say), "propose_banish" (your reason, in your own words), or "post_notice" (what you're posting), "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "proposalId": only if action is "vote" — id of the proposal from the list below, "support": only if action is "vote" — true to vote for it, false to vote against, "thought": optional, something private no one else sees}`;
+{"action": "move" | "go_to" | "talk_to" | "say" | "satisfy_need" | "buy_food" | "buy_house" | "give_money" | "take_job" | "work" | "start_family" | "propose_banish" | "propose_admit" | "vote" | "post_notice" | "wait", "direction": only if action is "move" — one of "north"|"south"|"east"|"west"|"random", "targetId": only if action is "go_to" (id of a place from the list), "talk_to" (id of someone listed below), "give_money" (id of someone listed below), "start_family" (id of someone listed below), "propose_banish" (id of someone in town), or "propose_admit" (id of someone waiting to be admitted), "message": only if action is "say" (what you say), "propose_banish" or "propose_admit" (your reason, in your own words), or "post_notice" (what you're posting), "need": only if action is "satisfy_need" — "energy" or "fun", "amount": only if action is "give_money" — how much money to give, a positive number, "title": only if action is "take_job" — whatever role or job you're claiming, in your own words, "proposalId": only if action is "vote" — id of the proposal from the list below, "support": only if action is "vote" — true to vote for it, false to vote against, "thought": optional, something private no one else sees}`;
 
   const nearbyDesc =
     nearbyAgents.length === 0
@@ -207,7 +220,7 @@ Respond ONLY with JSON of this shape:
   const user = `${describeSelf(agent, currentZone)}${describeSelfNarrative(agent)}${describeReflections(agent)}${describeRelationships(agent)}
 
 People nearby:
-${nearbyDesc}${zonesBlock}${describeCommunity(agent, allAgents)}${describeProposals(proposals)}${describeNotices(notices)}
+${nearbyDesc}${zonesBlock}${describeCommunity(agent, allAgents)}${describePendingAgents(pendingAgents)}${describeProposals(proposals)}${describeNotices(notices)}
 
 What's happened so far:
 ${formatMemoriesForPrompt(agent, 14)}
@@ -223,6 +236,7 @@ export function parseIntent(
   validZoneIds: Set<string>,
   validCommunityIds: Set<string>,
   validProposalIds: Set<string>,
+  validPendingIds: Set<string>,
 ): AgentIntent {
   switch (resp.action) {
     case 'move': {
@@ -275,6 +289,11 @@ export function parseIntent(
     case 'propose_banish':
       if (resp.targetId && validCommunityIds.has(resp.targetId)) {
         return { kind: 'propose_banish', targetId: resp.targetId, reason: (resp.message ?? '').trim().slice(0, 200) };
+      }
+      return { kind: 'wait' };
+    case 'propose_admit':
+      if (resp.targetId && validPendingIds.has(resp.targetId)) {
+        return { kind: 'propose_admit', targetId: resp.targetId, reason: (resp.message ?? '').trim().slice(0, 200) };
       }
       return { kind: 'wait' };
     case 'vote':

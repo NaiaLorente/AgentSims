@@ -12,6 +12,7 @@ export function SettingsPanel() {
   const connectionError = useSimStore((s) => s.connectionError);
   const setConnectionStatus = useSimStore((s) => s.setConnectionStatus);
   const agentConfigs = useSimStore((s) => s.agentConfigs);
+  const agents = useSimStore((s) => s.agents);
   const addAgentConfig = useSimStore((s) => s.addAgentConfig);
   const removeAgentConfig = useSimStore((s) => s.removeAgentConfig);
   const updateAgentConfig = useSimStore((s) => s.updateAgentConfig);
@@ -144,6 +145,14 @@ export function SettingsPanel() {
                 </option>
               ))}
             </select>
+            {agents[cfg.id]?.pending && (
+              <span
+                className="shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-300/80"
+                title="Added to an already-populated town — waiting for the existing town to vote it in"
+              >
+                pending
+              </span>
+            )}
             <button
               onClick={() => removeAgentConfig(cfg.id)}
               className="rounded-md bg-white/10 px-2 py-1 text-xs hover:bg-red-600/60"
@@ -159,6 +168,8 @@ export function SettingsPanel() {
       <p className="text-[11px] text-white/40">
         Assign a different model to each agent to compare how they behave. Changes apply immediately — use{' '}
         <strong>Reset</strong> only if you want to fully restart (clear positions, memory, and the transcript).
+        Adding an agent to an already-running town doesn't drop it straight in — it waits, marked{' '}
+        <strong>pending</strong>, until an existing agent proposes admitting it and a vote actually decides it.
         Two agents with a strong enough mutual bond can also start a family on their own — a child then shows up
         here too, no population limit beyond whatever the town's own resources can actually support.
       </p>

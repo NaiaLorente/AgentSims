@@ -155,11 +155,16 @@ export const useSimStore = create<SimState>()(
             model: '',
           };
           state.agentConfigs.push(config);
-          // Spawn it live immediately — no Reset needed to see a newly added agent.
+          // An empty town has no one to vote, so a founding agent joins immediately. Anyone
+          // added after that goes into the waiting room — inert until the existing town votes
+          // to admit them, same real-teeth mechanic as banishment, just inverted.
           const agent = createAgentFromConfig(config, state.world, state.agentConfigs.length - 1);
+          agent.pending = state.agentOrder.length > 0;
           state.agents[agent.id] = agent;
-          state.agentOrder.push(agent.id);
-          recordPopulationPoint(state);
+          if (!agent.pending) {
+            state.agentOrder.push(agent.id);
+            recordPopulationPoint(state);
+          }
         }),
 
       removeAgentConfig: (id) =>
