@@ -18,16 +18,20 @@ import {
   buildConversationTurnPrompt,
   buildPlannerPrompt,
   buildReflectionPrompt,
+  buildSelfNarrativePrompt,
   CONVERSATION_TURN_SCHEMA,
   type ConversationTurnResponse,
   fallbackConversationTurnResponse,
   fallbackPlannerResponse,
   fallbackReflectionResponse,
+  fallbackSelfNarrativeResponse,
   parseIntent,
   PLANNER_SCHEMA,
   type PlannerResponse,
   REFLECTION_SCHEMA,
   type ReflectionResponse,
+  SELF_NARRATIVE_SCHEMA,
+  type SelfNarrativeResponse,
   type TranscriptLine,
 } from '../llm/prompts';
 import { chatJSON, type OllamaSettings } from '../llm/ollamaClient';
@@ -42,6 +46,10 @@ const MAX_LOG_ENTRIES = 500;
 const REFLECTION_INTERVAL_TICKS = 60;
 const MIN_NEW_MEMORIES_FOR_REFLECTION = 4;
 const MAX_REFLECTIONS = 20;
+// The self-narrative is a synthesis of reflections, not raw memory, so it only makes sense to
+// update well after reflection has actually had a chance to say something new.
+const SELF_NARRATIVE_INTERVAL_TICKS = 240;
+const MIN_NEW_REFLECTIONS_FOR_NARRATIVE = 2;
 const MAX_AFFINITY_HISTORY = 400;
 
 const NEED_DECAY_PER_TICK = { hunger: 0.3, energy: 0.25, social: 0.15, fun: 0.2 };
@@ -262,6 +270,28 @@ async function runTick(): Promise<void> {
       }
     });
     for (const { id, since } of toReflect) void requestReflection(id, since);
+  }
+
+  // Self-narrative runs on its own, even slower, independent cadence — built from reflections
+  // rather than raw memory, so it only fires once reflection has actually produced enough new
+  // material worth reconsidering an identity over.
+  const toRenarrate: { id: string; since: number }[] = [];
+  for (const id of afterMovement.agentOrder) {
+    const a = afterMovement.agents[id];
+    if (!a || !a.model) continue;
+    if (tick - a.lastSelfNarrativeTick < SELF_NARRATIVE_INTERVAL_TICKS) continue;
+    const newCount = a.reflections.filter((r) => r.tick > a.lastSelfNarrativeTick).length;
+    if (newCount < MIN_NEW_REFLECTIONS_FOR_NARRATIVE) continue;
+    toRenarrate.push({ id, since: a.lastSelfNarrativeTick });
+  }
+  if (toRenarrate.length > 0) {
+    useSimStore.getState().mutate((state) => {
+      for (const { id } of toRenarrate) {
+        const a = state.agents[id];
+        if (a) a.lastSelfNarrativeTick = tick;
+      }
+    });
+    for (const { id, since } of toRenarrate) void requestSelfNarrative(id, since);
   }
 }
 
@@ -612,6 +642,29 @@ async function requestReflection(agentId: string, sinceTick: number): Promise<vo
     if (a.reflections.length > MAX_REFLECTIONS) {
       a.reflections.splice(0, a.reflections.length - MAX_REFLECTIONS);
     }
+  });
+}
+
+/** Same independence as reflection — doesn't touch activity state. Rewrites (or first writes)
+ *  the agent's single self-narrative string; an empty response leaves the existing one as-is
+ *  rather than blanking out an identity a model just didn't have anything to add to. */
+async function requestSelfNarrative(agentId: string, sinceTick: number): Promise<void> {
+  const state0 = useSimStore.getState();
+  const agent = state0.agents[agentId];
+  if (!agent) return;
+
+  const { system, user } = buildSelfNarrativePrompt(agent, sinceTick);
+  const resp = await chatJSON<SelfNarrativeResponse>(
+    agentSettings(state0.settings, agent),
+    { system, user, schema: SELF_NARRATIVE_SCHEMA },
+    fallbackSelfNarrativeResponse(),
+  );
+  const text = (resp.selfNarrative ?? '').trim().slice(0, 300);
+  if (!text) return;
+
+  useSimStore.getState().mutate((state) => {
+    const a = state.agents[agentId];
+    if (a) a.selfNarrative = text;
   });
 }
 

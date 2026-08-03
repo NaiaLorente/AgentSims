@@ -118,6 +118,11 @@ function describeReflections(agent: Agent): string {
   return `\n\nLooking back, you've noticed:\n${lines}`;
 }
 
+function describeSelfNarrative(agent: Agent): string {
+  if (!agent.selfNarrative) return '';
+  return `\n\nHow you'd describe yourself: "${agent.selfNarrative}"`;
+}
+
 export function buildPlannerPrompt(agent: Agent, nearbyAgents: Agent[], zones: Zone[]): { system: string; user: string } {
   const system = `You are ${agent.label}.
 
@@ -148,7 +153,7 @@ Respond ONLY with JSON of this shape:
   const zonesBlock = `\n\n${describeZonesBlock(zones)}`;
   const currentZone = zoneAt(zones, agent.pos);
 
-  const user = `${describeSelf(agent, currentZone)}${describeReflections(agent)}${describeRelationships(agent)}
+  const user = `${describeSelf(agent, currentZone)}${describeSelfNarrative(agent)}${describeReflections(agent)}${describeRelationships(agent)}
 
 People nearby:
 ${nearbyDesc}${zonesBlock}
@@ -346,6 +351,53 @@ Respond ONLY with JSON: {"reflections": an array of 1 to 3 short first-person ta
 ${recent || '(nothing much)'}
 
 What do you take away from it?`;
+
+  return { system, user };
+}
+
+// ---------------------------------------------------------------------------
+// Self-narrative — a single, slow-changing first-person identity, distinct
+// from the reflections list above. Reflections are discrete takeaways
+// appended over time; this is one description that gets re-examined and
+// possibly rewritten, rarely, and built from reflections rather than raw
+// memory — a synthesis of a synthesis, for identity to hold together across
+// a run long enough for it to otherwise drift or get crowded out.
+// ---------------------------------------------------------------------------
+
+export const SELF_NARRATIVE_SCHEMA = {
+  type: 'object',
+  properties: {
+    selfNarrative: { type: 'string' },
+  },
+  required: ['selfNarrative'],
+};
+
+export interface SelfNarrativeResponse {
+  selfNarrative?: string;
+}
+
+export function fallbackSelfNarrativeResponse(): SelfNarrativeResponse {
+  return {};
+}
+
+export function buildSelfNarrativePrompt(agent: Agent, sinceTick: number): { system: string; user: string } {
+  const system = `You are ${agent.label}. Take a step back further than usual and describe yourself, briefly and in your own words — not a list of events or a single takeaway, just how you'd sum yourself up right now if a stranger asked.
+
+Respond ONLY with JSON: {"selfNarrative": a short first-person description of yourself, 1 to 3 sentences}`;
+
+  const currentBlock = agent.selfNarrative
+    ? `How you currently describe yourself:\n"${agent.selfNarrative}"\n\n`
+    : "You haven't described yourself yet.\n\n";
+
+  const newReflections = agent.reflections
+    .filter((r) => r.tick > sinceTick)
+    .map((r) => `- ${r.text}`)
+    .join('\n');
+
+  const user = `${currentBlock}What you've noticed about yourself lately:
+${newReflections || '(nothing new)'}
+
+Update how you'd describe yourself, if anything's actually changed. Keep what still fits.`;
 
   return { system, user };
 }

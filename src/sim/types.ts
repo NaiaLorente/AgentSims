@@ -127,6 +127,12 @@ export interface Agent {
    *  stream so it survives being crowded out by recency and actually informs later decisions. */
   reflections: MemoryEvent[];
   lastReflectionTick: number;
+  /** A single, slow-changing first-person self-description ("who I am right now"), distinct from
+   *  the reflections list above — not another event to append, but an identity that gets
+   *  re-examined and possibly rewritten, rarely, built from reflections rather than raw memory.
+   *  Empty until the first update fires. Kept for longer identity consistency across a long run. */
+  selfNarrative: string;
+  lastSelfNarrativeTick: number;
   speech: SpeechBubble | null;
   needs: Needs;
   /** 0..100, 100 = fine. Unlike the needs above, this doesn't decay every tick on its own — it

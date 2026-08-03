@@ -197,6 +197,17 @@ Most browsers exempt `localhost`, but if yours doesn't:
   instead of only being knowable from a raw play-by-play. This costs an
   extra model call every so often per agent, independent of whatever else
   it's doing at the time.
+- **A slower-moving sense of self, separate from reflections.** Reflections
+  are a growing list of discrete takeaways; every so often — far less often
+  than reflection itself, and only once enough new reflections have actually
+  built up — an agent's own model is asked to step back even further and
+  sum itself up in a sentence or two, in its own words, revising what it
+  already had rather than adding to a list. It's built from reflections,
+  not raw memory (a synthesis of a synthesis), visible in the **Agents**
+  inspector, and folded into planning the same way reflections are, so an
+  agent's sense of who it is can hold together across a long run instead of
+  drifting with whatever happened most recently. Another periodic model
+  call, on its own independent cadence.
 - **Full transcript**: everything said, and every role claimed, is logged
   live in the transcript panel and shown as an on-canvas speech bubble as it
   happens — nothing is summarized or paraphrased. Simultaneous conversations

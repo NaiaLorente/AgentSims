@@ -174,6 +174,17 @@ export function AgentInspector() {
           </div>
 
           <div>
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Self-narrative</h3>
+            {agent.selfNarrative ? (
+              <p className="border-l-2 border-white/10 pl-2 text-[11px] italic text-white/60">"{agent.selfNarrative}"</p>
+            ) : (
+              <p className="text-[11px] text-white/30">
+                Nothing yet — this builds up rarely, from patterns across reflections.
+              </p>
+            )}
+          </div>
+
+          <div>
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/60">Status</h3>
             <NeedsBars needs={agent.needs} />
             <div className="mt-1.5 border-t border-white/10 pt-1.5">
