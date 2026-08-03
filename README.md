@@ -92,7 +92,12 @@ Most browsers exempt `localhost`, but if yours doesn't:
   covers ground tick to tick, and being very hungry or bored shortens how
   far a single deliberate move actually gets it. Energy is restored by
   resting at a house it owns, fun by spending time at the park, hunger by
-  buying food, and social by simply talking to people.
+  buying food, and social by simply talking to people. Restoring a need
+  reports the actual result, not a flat success message — resting from 20
+  energy to 45 and resting from 98 to 100 read differently ("...but you
+  were already close to full — it barely helped"), since a real run showed
+  an agent stuck resting over and over long after energy was maxed, while
+  hunger and fun it never touched quietly cratered in the background.
 - **Sustained neglect has real stakes, not just a slowdown.** The needs
   above never block anything and self-correct the moment you act on them —
   but an agent that leaves hunger or energy critically low for a long
@@ -160,6 +165,11 @@ Most browsers exempt `localhost`, but if yours doesn't:
   same real places, by name and id — so a conversation that drifts onto
   "where's House A?" has real facts to draw on instead of inventing
   landmarks that don't exist, the way one long real run did before this.
+  It also gets a copy of the agent's own last spoken line, and the planner
+  prompt gets a copy of its last private thought, each with a plain nudge
+  not to just repeat it verbatim if nothing's changed — smaller local
+  models tend to loop on their own prior output, and this puts the repeat
+  in front of the model directly rather than leaving it buried in memory.
 - **Relationships are remembered, not just implied by chat.** After any
   exchange, the speaking agent's own model can optionally update how it
   feels about the other person — a short label in its own words ("a close

@@ -101,6 +101,14 @@ function whereForHint(names: string[]): string {
  *  naming the actual gap and the one way to close it (work) turns a stated goal it can't afford
  *  into a concrete next step instead of a loop of identical failed attempts. If it already holds
  *  a role somewhere, point at working that instead of suggesting it claim a redundant one. */
+/** An action that succeeds isn't necessarily worth repeating — resting from 98 to 100 energy
+ *  isn't the same as resting from 20 to 45, but the old flat "restoring energy" message read
+ *  identically either way. Naming the actual outcome (and flagging when it barely moved the
+ *  needle) is honest reporting, not a priority nudge — it doesn't say what to do about it. */
+function outcomeNote(before: number): string {
+  return before >= 90 ? ', but you were already close to full — it barely helped' : '';
+}
+
 function earnMoneyHint(state: SimState, agent: Agent, price: number): string {
   const shortfall = price - agent.wallet;
   const roleZoneNames = [
@@ -460,15 +468,18 @@ async function requestPlan(agentId: string): Promise<void> {
           (intent.need === 'energy' && zone?.kind === 'house') || (intent.need === 'fun' && zone?.kind === 'park');
         const houseAllowed = !zone || zone.kind !== 'house' || !zone.ownerId || zone.ownerId === a.id;
         if (kindFits && zone && houseAllowed) {
+          const before = a.needs[intent.need];
           const restore = intent.need === 'energy' ? REST_RESTORE : FUN_RESTORE;
-          a.needs[intent.need] = clamp100(a.needs[intent.need] + restore);
+          a.needs[intent.need] = clamp100(before + restore);
+          const after = a.needs[intent.need];
+          const note = outcomeNote(before);
           addMemory(
             a,
             now,
             'need',
             intent.need === 'energy'
-              ? `You rested at ${zone.name}, restoring energy.`
-              : `You had fun at ${zone.name}.`,
+              ? `You rested at ${zone.name}, restoring energy${note} (now ${Math.round(after)}/100).`
+              : `You had fun at ${zone.name}${note} (now ${Math.round(after)}/100).`,
           );
         } else if (kindFits && zone) {
           addMemory(a, now, 'need', `You tried to rest at ${zone.name}, but it's owned by ${zone.ownerLabel}.`);
@@ -490,9 +501,16 @@ async function requestPlan(agentId: string): Promise<void> {
         const zone = zoneAt(state.zones, a.pos);
         const sells = zone?.kind === 'shop' || zone?.kind === 'restaurant';
         if (sells && zone && a.wallet >= FOOD_PRICE) {
+          const before = a.needs.hunger;
           a.wallet -= FOOD_PRICE;
-          a.needs.hunger = clamp100(a.needs.hunger + FOOD_RESTORE);
-          addMemory(a, now, 'bought', `You bought food at ${zone.name} for $${FOOD_PRICE}.`);
+          a.needs.hunger = clamp100(before + FOOD_RESTORE);
+          const after = a.needs.hunger;
+          addMemory(
+            a,
+            now,
+            'bought',
+            `You bought food at ${zone.name} for $${FOOD_PRICE}${outcomeNote(before)} (now ${Math.round(after)}/100).`,
+          );
           if (a.model) statsFor(state, a.model).moneySpent += FOOD_PRICE;
         } else if (sells) {
           const hint = earnMoneyHint(state, a, FOOD_PRICE);
