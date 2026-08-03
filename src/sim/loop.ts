@@ -52,6 +52,7 @@ const MAX_REFLECTIONS = 20;
 const SELF_NARRATIVE_INTERVAL_TICKS = 240;
 const MIN_NEW_REFLECTIONS_FOR_NARRATIVE = 2;
 const MAX_AFFINITY_HISTORY = 400;
+const MAX_POPULATION_HISTORY = 500;
 
 const NEED_DECAY_PER_TICK = { hunger: 0.3, energy: 0.25, social: 0.15, fun: 0.2 };
 const REST_RESTORE = 25;
@@ -115,6 +116,16 @@ function pushLogEntry(state: SimState, entry: Omit<LogEntry, 'id'>): void {
   state.log.push({ id: makeLogId(), ...entry });
   if (state.log.length > MAX_LOG_ENTRIES) {
     state.log.splice(0, state.log.length - MAX_LOG_ENTRIES);
+  }
+}
+
+/** The town's population arc for the run report — one point whenever the count actually
+ *  changes (birth, collapse, banishment), not sampled on a timer. simStore.ts records its own
+ *  points the same way for the mutations that happen there (manual add/remove, Reset). */
+function recordPopulation(state: SimState, tick: number): void {
+  state.populationHistory.push({ tick, count: state.agentOrder.length });
+  if (state.populationHistory.length > MAX_POPULATION_HISTORY) {
+    state.populationHistory.splice(0, state.populationHistory.length - MAX_POPULATION_HISTORY);
   }
 }
 
@@ -265,6 +276,7 @@ async function runTick(): Promise<void> {
           s.collapses = (s.collapses ?? 0) + 1;
         }
         removeAgent(state, id);
+        recordPopulation(state, tick);
       }
     });
   }
@@ -352,6 +364,7 @@ async function runTick(): Promise<void> {
             kind: 'event',
           });
           removeAgent(state, proposal.targetId);
+          recordPopulation(state, tick);
         } else {
           const label = target?.label ?? proposal.targetLabel;
           if (target) addMemory(target, tick, 'governance', `A vote to banish you failed — you're still here.`);
@@ -707,6 +720,7 @@ async function requestPlan(agentId: string): Promise<void> {
             text: `${a.label} and ${target.label} had a child: ${child.label}`,
             kind: 'event',
           });
+          recordPopulation(state, now);
         } else {
           a.familyProposalTo = target.id;
           a.familyProposalTick = now;

@@ -1,5 +1,6 @@
 import { useSimStore } from '../state/simStore';
 import { saveToLocalStorage, loadFromLocalStorage, hasSavedGame } from '../persistence/saveLoad';
+import { downloadRunReport } from '../persistence/runReport';
 
 const SPEEDS = [
   { label: '0.5x', value: 0.5 },
@@ -55,6 +56,13 @@ export function Controls() {
           className="rounded-md bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20 disabled:opacity-40"
         >
           📂 Load
+        </button>
+        <button
+          onClick={() => downloadRunReport()}
+          title="Download a Markdown summary of the run so far — population arc, per-model numbers, and key events"
+          className="rounded-md bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20"
+        >
+          📄 Report
         </button>
         <button
           onClick={() => {

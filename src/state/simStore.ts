@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import type { ActiveConversation, AffinityPoint, Agent, LogEntry, ModelStats, Proposal, SimClock, World, Zone } from '../sim/types';
+import type {
+  ActiveConversation,
+  AffinityPoint,
+  Agent,
+  LogEntry,
+  ModelStats,
+  PopulationPoint,
+  Proposal,
+  SimClock,
+  World,
+  Zone,
+} from '../sim/types';
 import { buildWorld } from '../sim/world';
 import { createZones } from '../sim/zones';
 import { agentIdCounter } from '../sim/ids';
@@ -44,6 +55,9 @@ export interface SimState {
   modelStats: Record<string, ModelStats>;
   /** Affinity-over-time history for the relationship trend sparklines, capped and append-only. */
   affinityHistory: AffinityPoint[];
+  /** Population-over-time history for the run report's "population arc" — one point whenever
+   *  the count actually changes (birth, collapse, banishment, manual add/remove), not sampled. */
+  populationHistory: PopulationPoint[];
   /** Self-governance banishment proposals, open and resolved — town-wide, not per-agent. */
   proposals: Proposal[];
   log: LogEntry[];
@@ -86,6 +100,19 @@ function freshLog(): LogEntry[] {
   return [{ id: makeLogId(), tick: 0, text: 'The sandbox begins. No rules, no roles — just watch.', kind: 'system' }];
 }
 
+const MAX_POPULATION_HISTORY = 500;
+
+/** Records the current population count as a new arc point, whenever it actually changes —
+ *  mirrors loop.ts's own recordPopulation for the mutations that happen here instead (manual
+ *  add/remove from the roster, and the initial spawn on Reset). Kept local rather than shared
+ *  with loop.ts to avoid a circular import (loop.ts already imports this store). */
+function recordPopulationPoint(state: SimState): void {
+  state.populationHistory.push({ tick: state.clock.tick, count: state.agentOrder.length });
+  if (state.populationHistory.length > MAX_POPULATION_HISTORY) {
+    state.populationHistory.splice(0, state.populationHistory.length - MAX_POPULATION_HISTORY);
+  }
+}
+
 export const useSimStore = create<SimState>()(
   immer((set) => {
     const initialConfigs = defaultAgentConfigs();
@@ -100,6 +127,7 @@ export const useSimStore = create<SimState>()(
       activeConversations: {},
       modelStats: {},
       affinityHistory: [],
+      populationHistory: [{ tick: 0, count: agentOrder.length }],
       proposals: [],
       log: freshLog(),
       clock: { tick: 0, running: false, ticksPerSecond: 1 },
@@ -126,6 +154,7 @@ export const useSimStore = create<SimState>()(
           const agent = createAgentFromConfig(config, state.world, state.agentConfigs.length - 1);
           state.agents[agent.id] = agent;
           state.agentOrder.push(agent.id);
+          recordPopulationPoint(state);
         }),
 
       removeAgentConfig: (id) =>
@@ -133,6 +162,7 @@ export const useSimStore = create<SimState>()(
           state.agentConfigs = state.agentConfigs.filter((c) => c.id !== id);
           delete state.agents[id];
           state.agentOrder = state.agentOrder.filter((agentId) => agentId !== id);
+          recordPopulationPoint(state);
           if (state.selectedAgentId === id) state.selectedAgentId = null;
         }),
 
@@ -200,6 +230,7 @@ export const useSimStore = create<SimState>()(
           state.log = freshLog();
           state.clock = { tick: 0, running: false, ticksPerSecond: 1 };
           state.selectedAgentId = null;
+          state.populationHistory = [{ tick: 0, count: state.agentOrder.length }];
         }),
 
       mutate: (fn) => set((state) => fn(state)),
@@ -214,6 +245,7 @@ export function serializeSnapshot(): {
   zones: Zone[];
   modelStats: Record<string, ModelStats>;
   affinityHistory: AffinityPoint[];
+  populationHistory: PopulationPoint[];
   proposals: Proposal[];
   log: LogEntry[];
   clock: SimClock;
@@ -227,6 +259,7 @@ export function serializeSnapshot(): {
     zones: s.zones,
     modelStats: s.modelStats,
     affinityHistory: s.affinityHistory,
+    populationHistory: s.populationHistory,
     proposals: s.proposals,
     log: s.log,
     clock: { ...s.clock, running: false },
@@ -241,6 +274,7 @@ export function loadSnapshot(snapshot: {
   zones?: Zone[];
   modelStats?: Record<string, ModelStats>;
   affinityHistory?: AffinityPoint[];
+  populationHistory?: PopulationPoint[];
   proposals?: Proposal[];
   log: LogEntry[];
   clock: SimClock;
@@ -262,6 +296,7 @@ export function loadSnapshot(snapshot: {
     state.proposals = snapshot.proposals ?? [];
     state.log = snapshot.log;
     state.clock = { ...snapshot.clock, running: false };
+    state.populationHistory = snapshot.populationHistory ?? [{ tick: state.clock.tick, count: state.agentOrder.length }];
     state.settings = snapshot.settings;
   });
 }

@@ -258,6 +258,18 @@ Most browsers exempt `localhost`, but if yours doesn't:
   actually used at least once. None of it is a new measurement — it's the
   same underlying facts, just normalized so two models are on equal footing
   regardless of how many agents or how much time either has had.
+- **A run report you can actually keep.** The live dashboard is only there
+  while the tab is open — closing it or hitting Reset loses it. The
+  **Report** button in the controls bar downloads a Markdown summary of the
+  run so far instead: the population arc (every point the town's size
+  actually changed — a birth, a collapse, a banishment, a manual add or
+  remove, not a value sampled on a timer), each model's numbers from the
+  comparison dashboard above, and every key event from the transcript (house
+  purchases, jobs claimed, money given, houses lost, collapses,
+  banishments, births) with the tick it happened on. Nothing in it is
+  computed specially for the report — it's the same underlying data the
+  live views already show, just written out somewhere that survives closing
+  the tab.
 
 Project layout: simulation logic lives in `src/sim/`, the Ollama client and
 prompts in `src/llm/`, app state (including the agent roster) in

@@ -243,3 +243,11 @@ export interface AffinityPoint {
   otherLabel: string;
   affinity: number;
 }
+
+/** One point in the town's population-over-time history, recorded only when the count actually
+ *  changes (a birth, a collapse, a banishment, a manual add/remove) — the "population arc" for
+ *  the run report, not a value sampled on a timer. */
+export interface PopulationPoint {
+  tick: number;
+  count: number;
+}
