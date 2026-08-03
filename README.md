@@ -225,6 +225,15 @@ Most browsers exempt `localhost`, but if yours doesn't:
   at a glance — this is a visualization of that single existing score, not a
   separate "friendship"/"love" axis the engine tracks, since there's still no
   fixed ladder of relationship stages.
+- **Comparable, not just cumulative.** Raw totals favor whichever model
+  happens to be playing more agents, or has simply been running longer —
+  they're not a fair comparison by themselves. Each model's card also shows
+  a handful of numbers averaged across its agents right now: condition,
+  needs, wallet, how many relationships it's formed and its average affinity
+  toward them, and how many of the roughly a dozen available actions it's
+  actually used at least once. None of it is a new measurement — it's the
+  same underlying facts, just normalized so two models are on equal footing
+  regardless of how many agents or how much time either has had.
 
 Project layout: simulation logic lives in `src/sim/`, the Ollama client and
 prompts in `src/llm/`, app state (including the agent roster) in

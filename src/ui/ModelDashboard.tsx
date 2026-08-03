@@ -1,5 +1,9 @@
 import { useSimStore } from '../state/simStore';
-import type { AffinityPoint, ModelStats } from '../sim/types';
+import type { Agent, AffinityPoint, ModelStats } from '../sim/types';
+
+// Every distinct action kind an agent can take — the denominator for "how much of its own
+// available behavior space has this model actually used," not just "how many actions total."
+const TOTAL_ACTION_KINDS = 12;
 
 function ActionBar({ label, count, max }: { label: string; count: number; max: number }) {
   const pct = max > 0 ? (count / max) * 100 : 0;
@@ -14,17 +18,41 @@ function ActionBar({ label, count, max }: { label: string; count: number; max: n
   );
 }
 
-function ModelCard({ stats, agentLabels }: { stats: ModelStats; agentLabels: string[] }) {
+/**
+ * Cumulative totals (messages spoken, money moved, ever) inflate with agent count and time
+ * alive, so two models aren't actually comparable on them alone — a model playing three agents
+ * for an hour will out-total one playing a single agent for ten minutes regardless of how either
+ * is actually behaving. These are the same underlying facts, just averaged per agent right now,
+ * so cross-model comparison holds even when agent counts or uptimes differ.
+ */
+function derivedMetrics(agentsForModel: Agent[]) {
+  if (agentsForModel.length === 0) return null;
+  const n = agentsForModel.length;
+  const avgCondition = agentsForModel.reduce((sum, a) => sum + a.condition, 0) / n;
+  const avgNeeds =
+    agentsForModel.reduce((sum, a) => sum + (a.needs.hunger + a.needs.energy + a.needs.social + a.needs.fun) / 4, 0) / n;
+  const avgWallet = agentsForModel.reduce((sum, a) => sum + a.wallet, 0) / n;
+  const avgRelationships = agentsForModel.reduce((sum, a) => sum + Object.keys(a.relationships).length, 0) / n;
+  const affinities = agentsForModel.flatMap((a) => Object.values(a.relationships).map((r) => r.affinity));
+  const avgAffinity = affinities.length > 0 ? affinities.reduce((sum, v) => sum + v, 0) / affinities.length : null;
+  return { avgCondition, avgNeeds, avgWallet, avgRelationships, avgAffinity };
+}
+
+function ModelCard({ stats, agentsForModel }: { stats: ModelStats; agentsForModel: Agent[] }) {
   const topActions = Object.entries(stats.actionCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6);
   const maxCount = topActions.length > 0 ? topActions[0][1] : 0;
+  const actionDiversity = Object.keys(stats.actionCounts).length;
+  const derived = derivedMetrics(agentsForModel);
 
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-black/20 p-3 text-xs">
       <div>
         <div className="font-semibold text-white/85">{stats.model}</div>
-        {agentLabels.length > 0 && <div className="text-[10px] text-white/40">playing {agentLabels.join(', ')}</div>}
+        {agentsForModel.length > 0 && (
+          <div className="text-[10px] text-white/40">playing {agentsForModel.map((a) => a.label).join(', ')}</div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-white/60">
@@ -43,7 +71,33 @@ function ModelCard({ stats, agentLabels }: { stats: ModelStats; agentLabels: str
         <div>
           Houses lost: <span className="text-red-400/80">{stats.housesLost}</span>
         </div>
+        <div>
+          Actions used: <span className="text-white/80">{actionDiversity}/{TOTAL_ACTION_KINDS}</span>
+        </div>
       </div>
+
+      {derived && (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-white/10 pt-2 text-[11px] text-white/60">
+          <div className="col-span-2 text-[10px] uppercase tracking-wide text-white/30">Right now, per agent</div>
+          <div>
+            Condition: <span className="text-white/80">{Math.round(derived.avgCondition)}</span>
+          </div>
+          <div>
+            Needs: <span className="text-white/80">{Math.round(derived.avgNeeds)}</span>
+          </div>
+          <div>
+            Wallet: <span className="text-white/80">${Math.round(derived.avgWallet)}</span>
+          </div>
+          <div>
+            Relationships: <span className="text-white/80">{derived.avgRelationships.toFixed(1)}</span>
+          </div>
+          {derived.avgAffinity !== null && (
+            <div className="col-span-2">
+              Avg affinity toward others: <span className="text-white/80">{Math.round(derived.avgAffinity)}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {topActions.length > 0 && (
         <div className="flex flex-col gap-1 border-t border-white/10 pt-2">
@@ -127,7 +181,7 @@ export function ModelDashboard() {
             <ModelCard
               key={stats.model}
               stats={stats}
-              agentLabels={agentOrder.map((id) => agents[id]).filter((a) => a?.model === stats.model).map((a) => a!.label)}
+              agentsForModel={agentOrder.map((id) => agents[id]).filter((a): a is Agent => a?.model === stats.model)}
             />
           ))}
         </div>
