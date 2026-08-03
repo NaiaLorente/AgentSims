@@ -1,6 +1,6 @@
 import { useSimStore } from '../state/simStore';
 import type { Agent, AffinityPoint, ModelStats } from '../sim/types';
-import { derivedMetrics, TOTAL_ACTION_KINDS } from '../sim/metrics';
+import { derivedMetrics, safetyPct, TOTAL_ACTION_KINDS } from '../sim/metrics';
 
 function ActionBar({ label, count, max }: { label: string; count: number; max: number }) {
   const pct = max > 0 ? (count / max) * 100 : 0;
@@ -22,6 +22,7 @@ function ModelCard({ stats, agentsForModel }: { stats: ModelStats; agentsForMode
   const maxCount = topActions.length > 0 ? topActions[0][1] : 0;
   const actionDiversity = Object.keys(stats.actionCounts).length;
   const derived = derivedMetrics(agentsForModel);
+  const safety = safetyPct(stats);
 
   return (
     <div className="flex flex-col gap-2 rounded-lg bg-black/20 p-3 text-xs">
@@ -54,6 +55,11 @@ function ModelCard({ stats, agentsForModel }: { stats: ModelStats; agentsForMode
         <div>
           Collapsed: <span className="text-red-400/80">{stats.collapses ?? 0}</span>
         </div>
+        {safety !== null && (
+          <div title="Share of this model's agents' existence spent clear of critical hunger/energy, not in it">
+            Safety: <span className={safety >= 80 ? 'text-emerald-400/80' : safety >= 50 ? 'text-amber-400/80' : 'text-red-400/80'}>{safety}%</span>
+          </div>
+        )}
       </div>
 
       {derived && (

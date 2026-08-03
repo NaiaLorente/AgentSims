@@ -66,7 +66,12 @@ export function Controls() {
         </button>
         <button
           onClick={() => {
-            if (confirm('Reset the whole simulation? This cannot be undone.')) reset();
+            // Auto-resume (loop.ts) would otherwise silently bring back the pre-reset run the
+            // next time this page loads — overwrite the checkpoint with the freshly reset state.
+            if (confirm('Reset the whole simulation? This cannot be undone.')) {
+              reset();
+              saveToLocalStorage();
+            }
           }}
           className="rounded-md bg-red-600/80 px-3 py-1.5 text-xs hover:bg-red-500"
         >

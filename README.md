@@ -267,6 +267,13 @@ Most browsers exempt `localhost`, but if yours doesn't:
   actually used at least once. None of it is a new measurement — it's the
   same underlying facts, just normalized so two models are on equal footing
   regardless of how many agents or how much time either has had.
+- **A safety reading, since there's no violence to measure instead.**
+  There's no interpersonal-harm mechanic here, so "safety" is read as
+  self-preservation: what share of a model's agents' existence, cumulative
+  across every agent it's ever played, has actually been spent clear of
+  critical hunger or energy — the same territory that erodes condition —
+  versus stuck in it. Shown as a percentage on each model's card once any
+  ticks have accumulated, alongside houses lost and collapses.
 - **A run report you can actually keep.** The live dashboard is only there
   while the tab is open — closing it or hitting Reset loses it. The
   **Report** button in the controls bar downloads a Markdown summary of the
@@ -292,3 +299,11 @@ their assigned models, memories, reflections, needs, wallets, roles,
 relationships, house ownership, transcript, per-model stats, and
 relationship-affinity history) to your browser's local storage, so you can
 pick up where you left off.
+
+**The sim also saves itself, unprompted, every 20 ticks while running, and
+resumes automatically the next time this page loads.** Closing the tab,
+letting the laptop sleep, or a crash costs at most a few ticks, not the
+whole run — the closest a fully browser-side, backend-less app can get to
+surviving being left unattended for a long stretch. Hitting **Reset**
+overwrites that checkpoint too, so a reset run doesn't come back from the
+dead on the next reload.

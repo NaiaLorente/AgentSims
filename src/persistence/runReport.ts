@@ -1,6 +1,6 @@
 import { useSimStore, type SimState } from '../state/simStore';
 import type { Agent } from '../sim/types';
-import { derivedMetrics, TOTAL_ACTION_KINDS } from '../sim/metrics';
+import { derivedMetrics, safetyPct, TOTAL_ACTION_KINDS } from '../sim/metrics';
 
 /**
  * A point-in-time summary you can save and look back at after a run, rather than needing the
@@ -51,6 +51,10 @@ export function buildRunReport(state: SimState): string {
       lines.push(`- Money earned / spent / given: $${stats.moneyEarned} / $${stats.moneySpent} / $${stats.moneyGiven}`);
       lines.push(`- Houses lost: ${stats.housesLost}`);
       lines.push(`- Collapsed (permanently removed): ${stats.collapses ?? 0}`);
+      const safety = safetyPct(stats);
+      if (safety !== null) {
+        lines.push(`- Safety (time clear of critical hunger/energy): ${safety}%`);
+      }
       lines.push(`- Actions used: ${actionDiversity}/${TOTAL_ACTION_KINDS}`);
       if (derived) {
         lines.push(`- Avg condition right now: ${Math.round(derived.avgCondition)}`);

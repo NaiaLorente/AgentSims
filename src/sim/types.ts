@@ -244,6 +244,14 @@ export interface ModelStats {
   /** Agents actually removed for good after sitting at 0 condition too long — real elimination,
    *  not just a house lost. */
   collapses: number;
+  /** Total agent-ticks this model's agents have been alive for, ever — the denominator for the
+   *  "safety" figure below. Cumulative like the other stats, so it survives an agent's removal. */
+  ticksAlive: number;
+  /** Of ticksAlive, how many were spent with hunger or energy in critical territory — the
+   *  self-preservation reading of "safety": how much of its own existence a model's agents spend
+   *  in a state that's actively eroding condition, not whether anyone got physically harmed
+   *  (there's no such mechanic here). */
+  ticksCritical: number;
 }
 
 /** One point in a relationship's affinity-over-time history, recorded whenever it actually

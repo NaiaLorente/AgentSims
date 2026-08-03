@@ -10,9 +10,13 @@ import { NoticeBoardPanel } from './ui/NoticeBoardPanel';
 import { LiveConversations } from './ui/LiveConversations';
 import { ModelDashboard } from './ui/ModelDashboard';
 import { startLoopWatcher } from './sim/loop';
+import { hasSavedGame, loadFromLocalStorage } from './persistence/saveLoad';
 
 export default function App() {
   useEffect(() => {
+    // Auto-resume: the sim saves itself every few ticks while running (see loop.ts), so a
+    // closed tab, a sleeping laptop, or a crash loses at most a few ticks, not the whole run.
+    if (hasSavedGame()) loadFromLocalStorage();
     startLoopWatcher();
   }, []);
 

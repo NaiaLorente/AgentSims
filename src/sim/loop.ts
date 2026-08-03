@@ -37,6 +37,7 @@ import {
   type TranscriptLine,
 } from '../llm/prompts';
 import { chatJSON, type OllamaSettings } from '../llm/ollamaClient';
+import { saveToLocalStorage } from '../persistence/saveLoad';
 
 const NEARBY_RADIUS = 6;
 const TALK_TRIGGER_RADIUS = 1;
@@ -54,6 +55,12 @@ const SELF_NARRATIVE_INTERVAL_TICKS = 240;
 const MIN_NEW_REFLECTIONS_FOR_NARRATIVE = 2;
 const MAX_AFFINITY_HISTORY = 400;
 const MAX_POPULATION_HISTORY = 500;
+
+/** How often the running sim saves itself to local storage, unprompted — the point isn't the
+ *  manual Save button (still there for an explicit checkpoint), it's that closing the tab,
+ *  the laptop sleeping, or a crash doesn't lose more than a few ticks of progress. Auto-resume
+ *  on next load (see App.tsx) is what actually makes this matter. */
+const AUTO_SAVE_INTERVAL_TICKS = 20;
 
 const NEED_DECAY_PER_TICK = { hunger: 0.3, energy: 0.25, social: 0.15, fun: 0.2 };
 const REST_RESTORE = 25;
@@ -165,6 +172,12 @@ function updateCondition(state: SimState, agent: Agent, tick: number): void {
 
   agent.conditionZeroTicks = agent.condition <= 0 ? agent.conditionZeroTicks + 1 : 0;
 
+  if (agent.model) {
+    const s = statsFor(state, agent.model);
+    s.ticksAlive += 1;
+    if (critical) s.ticksCritical += 1;
+  }
+
   if (before >= WORSE_OFF_THRESHOLD && agent.condition < WORSE_OFF_THRESHOLD) {
     addMemory(agent, tick, 'need', 'Going this long without eating or resting is wearing you down — you look visibly worse off.');
   } else if (before < WORSE_OFF_THRESHOLD && agent.condition >= WORSE_OFF_THRESHOLD) {
@@ -195,7 +208,19 @@ function updateCondition(state: SimState, agent: Agent, tick: number): void {
 function statsFor(state: SimState, model: string): ModelStats {
   let s = state.modelStats[model];
   if (!s) {
-    s = { model, actionCounts: {}, messagesSpoken: 0, moneyEarned: 0, moneySpent: 0, moneyGiven: 0, moneyReceived: 0, housesLost: 0, collapses: 0 };
+    s = {
+      model,
+      actionCounts: {},
+      messagesSpoken: 0,
+      moneyEarned: 0,
+      moneySpent: 0,
+      moneyGiven: 0,
+      moneyReceived: 0,
+      housesLost: 0,
+      collapses: 0,
+      ticksAlive: 0,
+      ticksCritical: 0,
+    };
     state.modelStats[model] = s;
   }
   return s;
@@ -384,6 +409,10 @@ async function runTick(): Promise<void> {
         }
       }
     });
+  }
+
+  if (tick % AUTO_SAVE_INTERVAL_TICKS === 0) {
+    saveToLocalStorage();
   }
 }
 

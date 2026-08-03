@@ -1,4 +1,4 @@
-import type { Agent } from './types';
+import type { Agent, ModelStats } from './types';
 
 // Every distinct action kind an agent can take — the denominator for "how much of its own
 // available behavior space has this model actually used," not just "how many actions total."
@@ -23,4 +23,16 @@ export function derivedMetrics(agentsForModel: Agent[]) {
   const affinities = agentsForModel.flatMap((a) => Object.values(a.relationships).map((r) => r.affinity));
   const avgAffinity = affinities.length > 0 ? affinities.reduce((sum, v) => sum + v, 0) / affinities.length : null;
   return { avgCondition, avgNeeds, avgWallet, avgRelationships, avgAffinity };
+}
+
+/**
+ * The self-preservation reading of "safety": there's no interpersonal-harm mechanic in this sim
+ * to build a metric off, so this measures the closest real analog — what share of a model's
+ * agents' existence has been spent in critical-need territory, actively eroding condition,
+ * versus safely clear of it. Cumulative and tick-based (not a snapshot), so it survives an
+ * agent's removal the same way housesLost/collapses do. Null until any ticks have accumulated.
+ */
+export function safetyPct(stats: ModelStats): number | null {
+  if (!stats.ticksAlive) return null;
+  return Math.round(100 * (1 - stats.ticksCritical / stats.ticksAlive));
 }
